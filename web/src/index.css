@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+:root {
+  --emp-sidebar: #0f172a;
+  --emp-sidebar-hover: #1e293b;
+  --emp-accent: #2563eb;
+  --emp-accent-hover: #1d4ed8;
+  --emp-canvas: #f5f7fb;
+  --emp-card: #ffffff;
+  --emp-text: #0f172a;
+  --emp-muted: #64748b;
+  --emp-border: #e6ebf2;
+}
+
+body {
+  margin: 0;
+  background: var(--emp-canvas);
+  color: var(--emp-text);
+  font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+}
