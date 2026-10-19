@@ -435,6 +435,7 @@ export function SuperAdminHome() {
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [schoolForm, setSchoolForm] = useState({
     organizationId: "",
+    organizationName: "",
     name: "",
     address: "",
     type: "PRIMARY_AND_SECONDARY",
@@ -502,12 +503,25 @@ export function SuperAdminHome() {
     event.preventDefault();
     setError("");
     try {
+      const creatingOrganization = !schoolForm.organizationId || schoolForm.organizationId === "new";
       const created = await api<{ id: string; name: string }>("/api/v1/superadmin/schools", {
         method: "POST",
-        body: JSON.stringify(schoolForm),
+        body: JSON.stringify({
+          name: schoolForm.name,
+          address: schoolForm.address,
+          type: schoolForm.type,
+          primaryColor: schoolForm.primaryColor,
+          accentColor: schoolForm.accentColor,
+          iconKey: schoolForm.iconKey,
+          ...(creatingOrganization
+            ? { organizationName: schoolForm.organizationName.trim() }
+            : { organizationId: schoolForm.organizationId }),
+        }),
       });
       setSchoolForm((current) => ({
         ...current,
+        organizationId: creatingOrganization ? "" : current.organizationId,
+        organizationName: "",
         name: "",
         address: "",
         primaryColor: "#4f46e5",
@@ -682,10 +696,16 @@ export function SuperAdminHome() {
               <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" onClick={() => setCreateSchoolOpen(false)}><X className="h-5 w-5" /></button>
             </div>
             <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Organization
-                <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-normal text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" value={schoolForm.organizationId} onChange={(event) => setSchoolForm({ ...schoolForm, organizationId: event.target.value })} required>
-                  {orgs.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
-                </select>
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Organization *
+                {orgs.length ? (
+                  <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-normal text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" value={schoolForm.organizationId} onChange={(event) => setSchoolForm({ ...schoolForm, organizationId: event.target.value })} required>
+                    {orgs.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
+                    <option value="new">Create new organization</option>
+                  </select>
+                ) : null}
+                {!orgs.length || schoolForm.organizationId === "new" ? (
+                  <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" placeholder="Enter organization name" value={schoolForm.organizationName} onChange={(event) => setSchoolForm({ ...schoolForm, organizationName: event.target.value })} required />
+                ) : null}
               </label>
               <label className="text-sm font-semibold text-slate-700 sm:col-span-2">School name *
                 <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 px-3 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100"><Building2 className="h-4 w-4 text-blue-500" /><input className="w-full py-3 font-normal outline-none" placeholder="Enter school name" value={schoolForm.name} onChange={(event) => setSchoolForm({ ...schoolForm, name: event.target.value })} required /></div>
