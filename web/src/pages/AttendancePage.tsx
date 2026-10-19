@@ -66,10 +66,10 @@ type MonthlyAbsences = {
 };
 
 const statuses = [
-  { value: "PRESENT", label: "Present", idle: "border-emerald-200 bg-emerald-50 text-emerald-700", on: "bg-emerald-600 text-white border-emerald-600" },
-  { value: "ABSENT", label: "Absent", idle: "border-rose-200 bg-rose-50 text-rose-700", on: "bg-rose-600 text-white border-rose-600" },
-  { value: "LATE", label: "Late", idle: "border-amber-200 bg-amber-50 text-amber-700", on: "bg-amber-500 text-white border-amber-500" },
-  { value: "EXCUSED", label: "Excused", idle: "border-violet-200 bg-violet-50 text-violet-700", on: "bg-violet-600 text-white border-violet-600" },
+  { value: "PRESENT", label: "Present", ring: "border-emerald-500 bg-emerald-500 text-white", text: "text-emerald-600" },
+  { value: "ABSENT", label: "Absent", ring: "border-rose-500 bg-rose-500 text-white", text: "text-rose-600" },
+  { value: "LATE", label: "Late", ring: "border-amber-500 bg-amber-500 text-white", text: "text-amber-600" },
+  { value: "EXCUSED", label: "Excused", ring: "border-violet-500 bg-violet-500 text-white", text: "text-violet-600" },
 ] as const;
 
 function draftKey(sectionId: string, date: string, session: string) {
@@ -361,217 +361,174 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
     );
   }
 
+  if (opened && sheet) {
+    return (
+      <div className="mx-auto w-full max-w-xl space-y-4 pb-28">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-950">Student Attendance</h2>
+            <p className="mt-1 text-sm text-slate-500">{sheet.level} · Section {sheet.section} · {session === "MORNING" ? "Morning Session" : "Afternoon Session"}</p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            {locked ? (
+              <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button>
+            ) : null}
+            <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={cancel}>Back</button>
+          </div>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          <label className="flex min-w-[12rem] flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3">
+            <Search className="h-4 w-4 shrink-0 text-slate-400" />
+            <input className="w-full bg-transparent py-2.5 text-sm outline-none" placeholder="Search..." value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)} />
+          </label>
+          <button type="button" disabled={locked} className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}>All present</button>
+          <button type="button" disabled={locked} className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50" onClick={clearAll}>Clear</button>
+        </div>
+
+        {locked ? <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600">Locked. Tap Edit to change attendance.</p> : null}
+
+        <div className="space-y-3">
+          {visibleRows.map((row) => (
+            <article key={row.enrollmentId} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+              <p className="text-base font-bold text-slate-950">{row.student}</p>
+              <p className="mt-0.5 text-sm text-slate-500">{row.permanentId}</p>
+              <div className="mt-4 grid grid-cols-4 gap-2">
+                {statuses.map((item) => {
+                  const active = row.status === item.value;
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      disabled={locked}
+                      onClick={() => setStatus(row.enrollmentId, item.value)}
+                      className="flex flex-col items-center gap-1.5 disabled:opacity-60"
+                    >
+                      <span className={`grid h-11 w-11 place-items-center rounded-full border-2 ${active ? item.ring : "border-slate-200 bg-white text-transparent"}`}>
+                        {active ? <Check className="h-5 w-5" strokeWidth={3} /> : null}
+                      </span>
+                      <span className={`text-[11px] font-semibold ${active ? item.text : "text-slate-400"}`}>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {row.status === "ABSENT" || row.status === "EXCUSED" ? (
+                <input
+                  className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm disabled:bg-slate-50"
+                  maxLength={200}
+                  disabled={locked}
+                  placeholder={row.status === "ABSENT" ? "Absent reason (optional)" : "Excuse reason (optional)"}
+                  value={row.note}
+                  onChange={(event) => setNote(row.enrollmentId, event.target.value)}
+                />
+              ) : null}
+            </article>
+          ))}
+          {!visibleRows.length ? <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">No students match this search.</p> : null}
+        </div>
+
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-6">
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-center text-xs text-slate-500 sm:text-left">{dirty ? "Save draft or submit before leaving." : `Present ${counts.present} · Absent ${counts.absent} · Late ${counts.late} · Excused ${counts.excused}`}</p>
+            {sheet.currentYear ? (
+              <div className="grid grid-cols-3 gap-2 sm:flex">
+                <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700" onClick={cancel}>Cancel</button>
+                <button type="button" disabled={locked} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" onClick={saveDraft}>Draft</button>
+                <button type="button" disabled={locked} className="inline-flex items-center justify-center gap-1 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submit()}><Send className="h-4 w-4" />Submit</button>
+              </div>
+            ) : <p className="text-sm text-amber-700">Only the current academic year can be marked.</p>}
+          </div>
+        </div>
+
+        {saved ? <p className="text-sm text-blue-700">{saved}</p> : null}
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-3xl space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-950">Take attendance</h2>
-          <p className="text-sm text-slate-500">Choose class and section, then Morning or Afternoon. Attendance opens only after that.</p>
+          <p className="text-sm text-slate-500">Choose class and section, then Morning or Afternoon. The student list opens after Take attendance.</p>
         </div>
         {adminMode ? (
-          <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => {
-            if (opened && dirty && !confirmLeave()) return;
-            if (opened) leaveSheet(dirty);
-            setView("month");
-          }}>Monthly report</button>
+          <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => setView("month")}>Monthly report</button>
         ) : null}
       </div>
 
-      {!opened ? (
-        <>
-          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
-            {options && options.schools.length > 1 ? (
-              <Field label="School">
-                <select className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" value={school?.id ?? ""} onChange={(event) => {
-                  setSchoolId(event.target.value);
-                  setClassId("");
-                  setSectionId("");
-                  setSession("");
-                }}>
-                  {options.schools.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </select>
-              </Field>
-            ) : null}
-            <Field label="Academic year">
-              <input className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-slate-700" value={school?.year.name ?? "No current year"} readOnly />
-            </Field>
-            <Field label="Class / Form">
-              <select className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" value={classId} onChange={(event) => {
-                setClassId(event.target.value);
-                setSectionId("");
-                setSession("");
-              }}>
-                <option value="">Choose class</option>
-                {school?.classes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Section">
-              <select className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" value={sectionId} disabled={!classId} onChange={(event) => {
-                setSectionId(event.target.value);
-                setSession("");
-              }}>
-                <option value="">Choose section</option>
-                {classGroup?.sections.map((item) => <option key={item.id} value={item.id}>Section {item.name}</option>)}
-              </select>
-            </Field>
-            <Field label="Date">
-              <input className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" type="date" value={date} onChange={(event) => {
-                setDate(event.target.value);
-                setSession("");
-              }} />
-            </Field>
-          </div>
+      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2">
+        {options && options.schools.length > 1 ? (
+          <Field label="School">
+            <select className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" value={school?.id ?? ""} onChange={(event) => {
+              setSchoolId(event.target.value);
+              setClassId("");
+              setSectionId("");
+              setSession("");
+            }}>
+              {options.schools.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </Field>
+        ) : null}
+        <Field label="Academic year">
+          <input className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-slate-700" value={school?.year.name ?? "No current year"} readOnly />
+        </Field>
+        <Field label="Class / Form">
+          <select className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" value={classId} onChange={(event) => {
+            setClassId(event.target.value);
+            setSectionId("");
+            setSession("");
+          }}>
+            <option value="">Choose class</option>
+            {school?.classes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </Field>
+        <Field label="Section">
+          <select className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" value={sectionId} disabled={!classId} onChange={(event) => {
+            setSectionId(event.target.value);
+            setSession("");
+          }}>
+            <option value="">Choose section</option>
+            {classGroup?.sections.map((item) => <option key={item.id} value={item.id}>Section {item.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Date">
+          <input className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" type="date" value={date} onChange={(event) => {
+            setDate(event.target.value);
+            setSession("");
+          }} />
+        </Field>
+      </div>
 
-          <div className="grid gap-3 md:grid-cols-2">
-            <SessionCard
-              value="MORNING"
-              label="Morning session"
-              hint={sessionHint("MORNING")}
-              selected={session === "MORNING"}
-              idleTone="green"
-              disabled={!setupReady}
-              onSelect={() => setSession("MORNING")}
-            />
-            <SessionCard
-              value="AFTERNOON"
-              label="Afternoon session"
-              hint={sessionHint("AFTERNOON")}
-              selected={session === "AFTERNOON"}
-              idleTone="white"
-              disabled={!setupReady}
-              onSelect={() => setSession("AFTERNOON")}
-            />
-          </div>
+      {setupReady ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <SessionCard
+            value="MORNING"
+            label="Morning session"
+            hint={sessionHint("MORNING")}
+            selected={session === "MORNING"}
+            idleTone="green"
+            onSelect={() => setSession("MORNING")}
+          />
+          <SessionCard
+            value="AFTERNOON"
+            label="Afternoon session"
+            hint={sessionHint("AFTERNOON")}
+            selected={session === "AFTERNOON"}
+            idleTone="white"
+            onSelect={() => setSession("AFTERNOON")}
+          />
+        </div>
+      ) : (
+        <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">Choose Class / Form and Section first. Then Morning or Afternoon will appear.</p>
+      )}
 
-          {!setupReady ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">Choose class and section first. Then choose Morning or Afternoon.</p> : null}
-          {setupReady && !session ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">Choose Morning or Afternoon. Attendance cannot open until a session is selected.</p> : null}
+      {setupReady && !session ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">Choose Morning or Afternoon, then tap Take attendance.</p> : null}
 
-          <div className="flex justify-end">
-            <button type="button" disabled={!canOpen} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" onClick={openSheet}>
-              Open attendance
-            </button>
-          </div>
-        </>
-      ) : null}
-
-      {opened && sheet ? (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <div>
-              <p className="font-semibold text-slate-950">{sheet.level} · Section {sheet.section} · {session === "MORNING" ? "Morning" : "Afternoon"}</p>
-              <p className="text-xs text-slate-500">{date} · {sheet.year} · {locked ? "Locked — open Edit to change" : "Editing"}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {locked ? (
-                <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button>
-              ) : null}
-              <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={cancel}>Cancel</button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            <Count label="Total" value={sheet.students} tone="bg-white text-slate-800" />
-            <Count label="Present" value={counts.present} tone="bg-emerald-50 text-emerald-700" />
-            <Count label="Absent" value={counts.absent} tone="bg-rose-50 text-rose-700" />
-            <Count label="Late" value={counts.late} tone="bg-amber-50 text-amber-700" />
-            <Count label="Excused" value={counts.excused} tone="bg-violet-50 text-violet-700" />
-          </div>
-
-          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="font-semibold text-slate-950">Students — {session === "MORNING" ? "Morning" : "Afternoon"} session</h3>
-                <p className="text-xs text-slate-500">{classGroup?.label} · Section {section?.name} · {date}</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <label className="flex min-w-48 flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 sm:max-w-xs">
-                  <Search className="h-4 w-4 text-slate-400" />
-                  <input className="w-full bg-transparent py-2 text-sm outline-none" placeholder="Name, ID, or roll no..." value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)} />
-                </label>
-                <button type="button" disabled={locked} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}><Check className="mr-1 inline h-4 w-4" />Mark all present</button>
-                <button type="button" disabled={locked} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-600 disabled:opacity-50" onClick={clearAll}>Clear all</button>
-              </div>
-            </div>
-
-            <div className="hidden overflow-x-auto md:block">
-              <table className="min-w-[920px] w-full text-left text-sm">
-                <thead className="bg-sky-50 text-[11px] uppercase tracking-wide text-slate-400">
-                  <tr>
-                    <th className="px-3 py-2">#</th>
-                    <th className="px-3 py-2">Photo</th>
-                    <th className="px-3 py-2">Student name</th>
-                    <th className="px-3 py-2">Roll no.</th>
-                    <th className="px-3 py-2">Present</th>
-                    <th className="px-3 py-2">Absent</th>
-                    <th className="px-3 py-2">Late</th>
-                    <th className="px-3 py-2">Excused</th>
-                    <th className="px-3 py-2">Reason (optional)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleRows.map((row) => (
-                    <tr key={row.enrollmentId} className="border-t border-slate-100">
-                      <td className="px-3 py-3 text-slate-400">{row.number}</td>
-                      <td className="px-3 py-3">
-                        {row.photoUrl ? <img src={row.photoUrl} alt="" className="h-10 w-10 rounded-full object-cover" /> : <span className="grid h-10 w-10 place-items-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{initials(row.student)}</span>}
-                      </td>
-                      <td className="px-3 py-3">
-                        <p className="font-semibold text-slate-950">{row.student}</p>
-                        <p className="text-xs text-slate-500">{row.permanentId}</p>
-                      </td>
-                      <td className="px-3 py-3">{String(row.rollNumber).padStart(2, "0")}</td>
-                      {statuses.map((item) => (
-                        <td key={item.value} className="px-3 py-3">
-                          <button type="button" disabled={locked} className={`rounded-full border px-3 py-1 text-xs font-semibold disabled:opacity-60 ${row.status === item.value ? item.on : item.idle}`} onClick={() => setStatus(row.enrollmentId, item.value)}>{item.label}</button>
-                        </td>
-                      ))}
-                      <td className="px-3 py-3">
-                        {row.status === "ABSENT" || row.status === "EXCUSED" ? (
-                          <input className="w-44 rounded-lg border border-slate-200 px-2 py-1.5 text-xs disabled:bg-slate-50" maxLength={200} disabled={locked} placeholder={row.status === "ABSENT" ? "Absent reason (optional)" : "Excuse reason (optional)"} value={row.note} onChange={(event) => setNote(row.enrollmentId, event.target.value)} />
-                        ) : <span className="text-xs text-slate-300">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="space-y-3 p-3 md:hidden">
-              {visibleRows.map((row) => (
-                <article key={row.enrollmentId} className="rounded-2xl border border-slate-200 p-3">
-                  <div className="flex items-center gap-3">
-                    {row.photoUrl ? <img src={row.photoUrl} alt="" className="h-11 w-11 rounded-full object-cover" /> : <span className="grid h-11 w-11 place-items-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{initials(row.student)}</span>}
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-950">{row.student}</p>
-                      <p className="text-xs text-slate-500">{row.permanentId} · Roll {String(row.rollNumber).padStart(2, "0")}</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    {statuses.map((item) => (
-                      <button key={item.value} type="button" disabled={locked} className={`rounded-xl border px-2 py-2 text-xs font-semibold disabled:opacity-60 ${row.status === item.value ? item.on : item.idle}`} onClick={() => setStatus(row.enrollmentId, item.value)}>{item.label}</button>
-                    ))}
-                  </div>
-                  {row.status === "ABSENT" || row.status === "EXCUSED" ? (
-                    <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" maxLength={200} disabled={locked} placeholder={row.status === "ABSENT" ? "Absent reason (optional)" : "Excuse reason (optional)"} value={row.note} onChange={(event) => setNote(row.enrollmentId, event.target.value)} />
-                  ) : null}
-                </article>
-              ))}
-            </div>
-            {!visibleRows.length ? <p className="px-4 py-6 text-sm text-slate-500">No students match this search.</p> : null}
-          </section>
-
-          <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
-            <p className="text-sm text-slate-500">{dirty ? "Unsaved changes. Save a draft or submit before leaving." : "Attendance is ready."}</p>
-            {sheet.currentYear ? (
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700" onClick={cancel}><X className="h-4 w-4" />Cancel</button>
-                <button type="button" disabled={locked} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" onClick={saveDraft}>Save draft</button>
-                <button type="button" disabled={locked} className="inline-flex items-center gap-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submit()}><Send className="h-4 w-4" />Submit attendance</button>
-              </div>
-            ) : <p className="text-sm text-amber-700">Attendance can only be taken for the current academic year.</p>}
-          </div>
-        </>
-      ) : null}
+      <button type="button" disabled={!canOpen} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-end" onClick={openSheet}>
+        Take attendance
+      </button>
 
       {saved ? <p className="text-sm text-blue-700">{saved}</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -625,11 +582,3 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block text-xs font-medium text-slate-500">{label}<span className="mt-1 block text-sm text-slate-800">{children}</span></label>;
 }
 
-function Count({ label, value, tone }: { label: string; value: number; tone: string }) {
-  return <div className={`rounded-2xl border border-slate-200 px-3 py-2 ${tone}`}><p className="text-xs">{label}</p><p className="text-2xl font-bold">{value}</p></div>;
-}
-
-function initials(name: string) {
-  const parts = name.split(" ").filter(Boolean);
-  return `${parts[0]?.[0] ?? ""}${parts[1]?.[0] ?? ""}`.toUpperCase();
-}
