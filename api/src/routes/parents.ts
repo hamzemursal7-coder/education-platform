@@ -322,7 +322,7 @@ parentsRouter.post("/guardians/:id/invite", requireAuth, requireRole("SCHOOL_ADM
       where: {
         id: String(req.params.id),
         organizationId: admin.school.organizationId,
-        students: { some: { student: { enrollments: { some: { schoolId: admin.school.id } } } } },
+        ...parentVisibleAtSchool(admin.school.id),
       },
     });
     if (!guardian) throw new HttpError(404, "Guardian was not found.");
@@ -373,7 +373,7 @@ parentsRouter.post("/parents/:id/access", requireAuth, requireRole("SCHOOL_ADMIN
       where: {
         id: String(req.params.id),
         organizationId: admin.school.organizationId,
-        students: { some: { student: { enrollments: { some: { schoolId: admin.school.id } } } } },
+        ...parentVisibleAtSchool(admin.school.id),
       },
       include: { user: { select: { id: true, passwordHash: true } } },
     });
