@@ -385,7 +385,7 @@ superadminRouter.post("/superadmin/schools/:id/admins", async (req, res, next) =
     res.status(201).json({
       id: user.id,
       email: user.email,
-      setPasswordPath: `/set-password?token=${invite.token}`,
+      setPasswordPath: `/set-password/${invite.token}`,
     });
   } catch (error) {
     next(error);

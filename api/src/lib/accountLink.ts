@@ -16,5 +16,5 @@ export async function issueSetPasswordLink(userId: string) {
       },
     }),
   ]);
-  return `/set-password?token=${invite.token}`;
+  return `/set-password/${invite.token}`;
 }

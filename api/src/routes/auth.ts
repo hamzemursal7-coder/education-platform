@@ -25,15 +25,24 @@ const setPasswordSchema = z.object({
 });
 
 async function openInvite(token: string) {
-  const invite = await prisma.inviteToken.findUnique({ where: { tokenHash: hashRefreshToken(token) } });
-  if (!invite || invite.usedAt || invite.expiresAt < new Date()) return null;
+  const invite = await prisma.inviteToken.findUnique({ where: { tokenHash: hashRefreshToken(token.trim()) } });
+  if (!invite || invite.usedAt || invite.expiresAt.getTime() < Date.now()) return null;
   return invite;
 }
 
 authRouter.post("/set-password/check", async (req, res, next) => {
   try {
     const token = z.string().min(20).safeParse(req.body?.token);
-    if (!token.success || !(await openInvite(token.data))) throw new HttpError(400, "This link is no longer valid.");
+    if (!token.success) throw new HttpError(400, "This link is no longer valid.");
+    let invite: Awaited<ReturnType<typeof openInvite>> = null;
+    try {
+      invite = await openInvite(token.data);
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error ? String((error as { code: unknown }).code) : "ERR";
+      res.setHeader("X-Error-Code", code);
+      throw new HttpError(400, "This link is no longer valid.");
+    }
+    if (!invite) throw new HttpError(400, "This link is no longer valid.");
     res.json({ ok: true });
   } catch (error) {
     next(error);

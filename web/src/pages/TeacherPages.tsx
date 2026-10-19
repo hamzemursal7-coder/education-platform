@@ -699,7 +699,8 @@ function TeacherStat({ icon, label, value, tone }: { icon: React.ReactNode; labe
 }
 
 export function SetPasswordPage() {
-  const token = new URLSearchParams(window.location.search).get("token") ?? "";
+  const params = useParams();
+  const token = (params.token || new URLSearchParams(window.location.search).get("token") || "").trim();
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [linkState, setLinkState] = useState<"checking" | "ready" | "invalid" | "saved">("checking");
@@ -707,11 +708,16 @@ export function SetPasswordPage() {
 
   useEffect(() => {
     if (token.length < 20) {
-      setLinkState("invalid");
+      setLinkState(sessionStorage.getItem("emp_password_saved") === "1" ? "saved" : "invalid");
       return;
     }
-    api("/api/v1/auth/set-password/check", { method: "POST", body: JSON.stringify({ token }) })
-      .then(() => setLinkState("ready"))
+    sessionStorage.removeItem("emp_password_saved");
+    fetch("/api/v1/auth/set-password/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    })
+      .then((response) => setLinkState(response.ok ? "ready" : "invalid"))
       .catch(() => setLinkState("invalid"));
   }, [token]);
 
@@ -719,7 +725,14 @@ export function SetPasswordPage() {
     event.preventDefault();
     setError("");
     try {
-      await api("/api/v1/auth/set-password", { method: "POST", body: JSON.stringify({ token, password }) });
+      const response = await fetch("/api/v1/auth/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password }),
+      });
+      const body = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(body?.message ?? "Could not save the password.");
+      sessionStorage.setItem("emp_password_saved", "1");
       window.history.replaceState(null, "", "/set-password");
       setLinkState("saved");
     } catch (caught) {
@@ -734,7 +747,7 @@ export function SetPasswordPage() {
       <section className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-3xl font-semibold text-slate-900">Set password</h1>
         {linkState === "checking" ? <p className="mt-6 text-sm text-slate-500">Checking this link...</p> : null}
-        {linkState === "invalid" ? <p className="mt-6 rounded-xl bg-rose-50 px-3 py-3 text-sm text-rose-700">This link is no longer valid. Ask the school for a new one.</p> : null}
+        {linkState === "invalid" ? <p className="mt-6 rounded-xl bg-rose-50 px-3 py-3 text-sm text-rose-700">{token ? "This link is no longer valid. Ask the school for a new one." : "Open the full link copied by the school. The address must include the long code after set-password."}</p> : null}
         {linkState === "saved" ? <p className="mt-6 rounded-xl bg-blue-50 px-3 py-3 text-sm text-blue-700">Password saved. This link has been used and cannot be opened again. Sign in with your email.</p> : null}
         {linkState === "ready" ? (
           <form onSubmit={submit}>

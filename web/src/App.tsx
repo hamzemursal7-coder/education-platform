@@ -54,6 +54,7 @@ export function App() {
       <Route path="/teacher/login" element={<PortalLoginPage portal="teacher" onSuccess={setUser} />} />
       <Route path="/school/login" element={<PortalLoginPage portal="school" onSuccess={setUser} />} />
       <Route path="/set-password" element={<SetPasswordPage />} />
+      <Route path="/set-password/:token" element={<SetPasswordPage />} />
       <Route path="/superadmin/dashboard" element={<Protected user={user} role="SUPER_ADMIN" title="Super Admin dashboard"><SuperAdminHome /></Protected>} />
       <Route path="/school/dashboard" element={<Protected user={user} role="SCHOOL_ADMIN" title="School dashboard"><SchoolDashboard /></Protected>} />
       <Route path="/school/reports" element={<Protected user={user} role="SCHOOL_ADMIN" title="Reports"><ReportsPage /></Protected>} />

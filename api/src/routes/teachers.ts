@@ -403,7 +403,7 @@ teachersRouter.post("/teachers", async (req, res, next) => {
     res.status(201).json({
       id: teacher.id,
       publicId: teacher.publicId,
-      setPasswordPath: `/set-password?token=${invite.token}`,
+      setPasswordPath: `/set-password/${invite.token}`,
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

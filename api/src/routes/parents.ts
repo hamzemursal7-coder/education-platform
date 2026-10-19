@@ -362,7 +362,7 @@ parentsRouter.post("/guardians/:id/invite", requireAuth, requireRole("SCHOOL_ADM
     res.status(201).json({
       id: created.id,
       publicId: created.publicId,
-      setPasswordPath: `/set-password?token=${invite.token}`,
+      setPasswordPath: `/set-password/${invite.token}`,
     });
   } catch (error) {
     next(error);

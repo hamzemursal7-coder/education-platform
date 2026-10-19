@@ -23,7 +23,8 @@ export function PasswordLinkDialog({
         <p className="mt-2 text-sm leading-6 text-slate-600">
           Copy this link and send it on WhatsApp or email{email ? ` to ${email}` : ""}. It works once. After the password is saved, the same link cannot be used again.
         </p>
-        <p className="mt-4 break-all rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-800">{url}</p>
+        <input className="mt-4 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800" readOnly value={url} onFocus={(event) => event.currentTarget.select()} />
+        <a className="mt-3 inline-flex text-sm font-semibold text-blue-700 hover:underline" href={url} target="_blank" rel="noreferrer">Open link</a>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700" onClick={onClose}>Close</button>
           <button
