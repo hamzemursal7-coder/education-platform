@@ -8,6 +8,21 @@ import { newRefreshToken, signAccessToken } from "../lib/tokens.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
 
+const EDUCATION_NETWORK = "Educationnetwork";
+
+async function ensureEducationNetwork() {
+  const named = await prisma.organization.findFirst({ where: { name: EDUCATION_NETWORK } });
+  if (named) return named;
+  const existing = await prisma.organization.findMany({ orderBy: { createdAt: "asc" } });
+  if (existing.length === 1) {
+    return prisma.organization.update({
+      where: { id: existing[0].id },
+      data: { name: EDUCATION_NETWORK, isDemo: false },
+    });
+  }
+  return prisma.organization.create({ data: { name: EDUCATION_NETWORK, isDemo: false } });
+}
+
 const cookieBase = {
   httpOnly: true,
   sameSite: "lax" as const,
@@ -140,6 +155,7 @@ superadminRouter.use("/superadmin", requireAuth, requireRole("SUPER_ADMIN"));
 
 superadminRouter.get("/superadmin/organizations", async (_req, res, next) => {
   try {
+    await ensureEducationNetwork();
     const rows = await prisma.organization.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true, isDemo: true, _count: { select: { schools: true } } },
@@ -179,24 +195,8 @@ superadminRouter.post("/superadmin/schools", async (req, res, next) => {
   try {
     const body = schoolSchema.safeParse(req.body);
     if (!body.success) throw new HttpError(400, "School name is required.");
-    let organizationId = body.data.organizationId;
-    if (!organizationId) {
-      const named = body.data.organizationName?.trim();
-      const existing = named
-        ? null
-        : await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
-      if (existing) {
-        organizationId = existing.id;
-      } else {
-        const org = await prisma.organization.create({
-          data: { name: named || "Ilays Educational Academy", isDemo: body.data.isDemo ?? false },
-        });
-        organizationId = org.id;
-      }
-    } else {
-      const org = await prisma.organization.findUnique({ where: { id: organizationId } });
-      if (!org) throw new HttpError(404, "Organization was not found.");
-    }
+    const network = await ensureEducationNetwork();
+    const organizationId = network.id;
     const code = await availableSchoolCode(organizationId, body.data.name);
     const school = await prisma.$transaction(async (tx) => {
       const created = await tx.school.create({

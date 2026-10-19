@@ -497,7 +497,7 @@ export function SuperAdminHome() {
     event.preventDefault();
     setError("");
     try {
-      const selectedOrg = orgs.find((org) => org.id === schoolForm.organizationId) ?? orgs[0];
+      const selectedOrg = orgs.find((org) => org.name === "Educationnetwork") ?? orgs[0];
       const created = await api<{ id: string; name: string }>("/api/v1/superadmin/schools", {
         method: "POST",
         body: JSON.stringify({
@@ -562,8 +562,7 @@ export function SuperAdminHome() {
   const activeSchools = summary.schoolList.filter((school) => school.isActive).length;
   const typeLabel = (type: string) => type === "PRIMARY_ONLY" ? "Primary" : type === "SECONDARY_ONLY" ? "Secondary" : "Primary & Secondary";
   const typeTone = (type: string) => type === "PRIMARY_ONLY" ? "bg-violet-50 text-violet-700" : type === "SECONDARY_ONLY" ? "bg-fuchsia-50 text-fuchsia-700" : "bg-slate-100 text-slate-700";
-  const selectedOrganization = orgs.find((org) => org.id === schoolForm.organizationId) ?? orgs[0];
-  const organizationLabel = selectedOrganization?.name ?? "Ilays Educational Academy";
+  const organizationLabel = "Educationnetwork";
   const deleteNameMatches = deleteSchool ? deletePhrase.trim() === deleteSchool.name : false;
 
   async function deactivateBeforeDelete() {
