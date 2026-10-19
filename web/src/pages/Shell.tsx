@@ -799,7 +799,7 @@ export function SuperAdminHome() {
             ) : (
               <>
                 <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-medium leading-6 text-rose-800">
-                  This permanently deletes {deleteSchool.name}. The school cannot be restored. A school that still has students, staff, or academic records cannot be deleted.
+                  This permanently deletes {deleteSchool.name} and everything in it: students, teachers, staff, classes, marks, and fees. This cannot be undone.
                 </p>
                 <label className="mt-4 block text-sm font-semibold text-slate-700">Type the school name to confirm
                   <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-rose-400" value={deletePhrase} placeholder={deleteSchool.name} onChange={(event) => setDeletePhrase(event.target.value)} autoComplete="off" />

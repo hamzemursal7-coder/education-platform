@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { config } from "../config.js";
 import { writeAudit } from "../lib/audit.js";
+import { deleteSchoolAndRecords } from "../lib/deleteSchool.js";
 import { prisma } from "../lib/prisma.js";
 import { newRefreshToken, signAccessToken } from "../lib/tokens.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
@@ -254,32 +255,13 @@ superadminRouter.delete("/superadmin/schools/:id", async (req, res, next) => {
     const school = await prisma.school.findUnique({ where: { id: String(req.params.id) } });
     if (!school) throw new HttpError(404, "School was not found.");
     if (school.isActive) throw new HttpError(400, "Deactivate the school before deleting it.");
-    const [users, academicYears, enrollments, staff, announcements, transfers, documents, alumni, fees, exams, assignments] = await Promise.all([
-      prisma.user.count({ where: { schoolId: school.id } }),
-      prisma.academicYear.count({ where: { schoolId: school.id } }),
-      prisma.enrollment.count({ where: { schoolId: school.id } }),
-      prisma.staffMember.count({ where: { schoolId: school.id } }),
-      prisma.announcement.count({ where: { schoolId: school.id } }),
-      prisma.transferRequest.count({ where: { OR: [{ fromSchoolId: school.id }, { toSchoolId: school.id }] } }),
-      prisma.studentDocument.count({ where: { schoolId: school.id } }),
-      prisma.alumniRecord.count({ where: { schoolId: school.id } }),
-      prisma.studentFee.count({ where: { schoolId: school.id } }),
-      prisma.exam.count({ where: { schoolId: school.id } }),
-      prisma.teacherAssignment.count({ where: { schoolId: school.id } }),
-    ]);
-    if (users || academicYears || enrollments || staff || announcements || transfers || documents || alumni || fees || exams || assignments) {
-      throw new HttpError(409, "This school has records and cannot be deleted. Deactivate it instead.");
-    }
-    await prisma.$transaction([
-      prisma.subject.deleteMany({ where: { schoolId: school.id } }),
-      prisma.school.delete({ where: { id: school.id } }),
-    ]);
+    await deleteSchoolAndRecords(school.id);
     await writeAudit({
       actorUserId: req.authUser!.id,
       action: "SCHOOL_DELETE",
       entityType: "School",
       entityId: school.id,
-      summary: `Deleted empty school ${school.name}`,
+      summary: `Deleted school ${school.name} and its records`,
     });
     res.json({ ok: true });
   } catch (error) {
