@@ -103,6 +103,159 @@ attendanceRouter.get("/my-sections", requireAuth, requireRole("TEACHER"), async 
   }
 });
 
+attendanceRouter.get("/attendance/day-status", requireAuth, requireRole("TEACHER", "SCHOOL_ADMIN"), async (req, res, next) => {
+  try {
+    const sectionId = String(req.query.sectionId ?? "");
+    const date = String(req.query.date ?? "");
+    if (!sectionId || !z.string().date().safeParse(date).success) {
+      throw new HttpError(400, "Choose a class section and a date.");
+    }
+    const section = await assertSectionAccess(req.authUser!.id, req.authUser!.role, sectionId);
+    const enrollments = await prisma.enrollment.findMany({
+      where: { sectionId, status: "ACTIVE" },
+      select: { id: true },
+    });
+    const records = enrollments.length
+      ? await prisma.attendanceRecord.findMany({
+          where: { enrollmentId: { in: enrollments.map((item) => item.id) }, date: day(date) },
+          select: { session: true, enrollmentId: true },
+        })
+      : [];
+    const morningIds = new Set(records.filter((item) => item.session === "MORNING").map((item) => item.enrollmentId));
+    const afternoonIds = new Set(records.filter((item) => item.session === "AFTERNOON").map((item) => item.enrollmentId));
+    const total = enrollments.length;
+    res.json({
+      year: section.classGroup.academicYear.name,
+      level: levelLabel(section.classGroup.level),
+      section: section.name,
+      currentYear: section.classGroup.academicYear.isCurrent,
+      students: total,
+      morning: {
+        recorded: total > 0 && morningIds.size > 0,
+        complete: total > 0 && morningIds.size === total,
+        marked: morningIds.size,
+      },
+      afternoon: {
+        recorded: total > 0 && afternoonIds.size > 0,
+        complete: total > 0 && afternoonIds.size === total,
+        marked: afternoonIds.size,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+attendanceRouter.get("/attendance/monthly-absences", requireAuth, requireRole("SCHOOL_ADMIN"), async (req, res, next) => {
+  try {
+    const admin = await prisma.user.findUnique({ where: { id: req.authUser!.id }, include: { school: true } });
+    if (!admin?.school?.isActive) throw new HttpError(403, "You are not allowed to access this record.");
+    const month = String(req.query.month ?? "");
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "Choose a month and year.");
+    const classId = String(req.query.classId ?? "");
+    const q = String(req.query.q ?? "").trim().toLowerCase();
+    const start = new Date(`${month}-01T00:00:00.000Z`);
+    const end = new Date(start);
+    end.setUTCMonth(end.getUTCMonth() + 1);
+    const year = await prisma.academicYear.findFirst({
+      where: {
+        schoolId: admin.school.id,
+        startDate: { lte: end },
+        endDate: { gte: start },
+      },
+      orderBy: { startDate: "desc" },
+    }) ?? await prisma.academicYear.findFirst({ where: { schoolId: admin.school.id, isCurrent: true } });
+    const classes = await prisma.classGroup.findMany({
+      where: {
+        schoolId: admin.school.id,
+        ...(year ? { academicYearId: year.id } : {}),
+        ...(classId ? { id: classId } : {}),
+      },
+      include: { sections: true },
+      orderBy: { level: "asc" },
+    });
+    const sectionIds = classes.flatMap((item) => item.sections.map((section) => section.id));
+    const enrollments = sectionIds.length
+      ? await prisma.enrollment.findMany({
+          where: { schoolId: admin.school.id, sectionId: { in: sectionIds }, status: { in: ["ACTIVE", "RETAINED", "TRANSFERRED"] } },
+          include: { student: true, classGroup: true, section: true },
+        })
+      : [];
+    const records = enrollments.length
+      ? await prisma.attendanceRecord.findMany({
+          where: {
+            enrollmentId: { in: enrollments.map((item) => item.id) },
+            date: { gte: start, lt: end },
+            status: { in: ["ABSENT", "EXCUSED", "LATE"] },
+          },
+          orderBy: [{ date: "asc" }, { session: "asc" }],
+        })
+      : [];
+    const byClass = classes.map((group) => {
+      const sectionRows = group.sections.map((section) => {
+        const sectionEnrollments = enrollments.filter((item) => item.sectionId === section.id);
+        const ids = new Set(sectionEnrollments.map((item) => item.id));
+        const mine = records.filter((item) => ids.has(item.enrollmentId));
+        const dayMap = new Map<string, { date: string; session: string; absent: number; late: number; excused: number }>();
+        for (const record of mine) {
+          const key = `${record.date.toISOString().slice(0, 10)}:${record.session}`;
+          const row = dayMap.get(key) ?? {
+            date: record.date.toISOString().slice(0, 10),
+            session: record.session,
+            absent: 0,
+            late: 0,
+            excused: 0,
+          };
+          if (record.status === "ABSENT") row.absent += 1;
+          if (record.status === "LATE") row.late += 1;
+          if (record.status === "EXCUSED") row.excused += 1;
+          dayMap.set(key, row);
+        }
+        return {
+          sectionId: section.id,
+          section: section.name,
+          students: sectionEnrollments.length,
+          days: [...dayMap.values()],
+        };
+      });
+      return {
+        classId: group.id,
+        label: levelLabel(group.level),
+        sections: sectionRows,
+      };
+    });
+    const people = enrollments
+      .map((enrollment) => {
+        const mine = records.filter((item) => item.enrollmentId === enrollment.id);
+        const absences = mine.filter((item) => item.status === "ABSENT" || item.status === "EXCUSED" || item.status === "LATE");
+        return {
+          enrollmentId: enrollment.id,
+          sectionId: enrollment.sectionId,
+          permanentId: enrollment.student.permanentId,
+          name: `${enrollment.student.firstName} ${enrollment.student.fatherName} ${enrollment.student.grandfatherName}`,
+          level: levelLabel(enrollment.classGroup.level),
+          section: enrollment.section.name,
+          days: absences.map((item) => ({
+            date: item.date.toISOString().slice(0, 10),
+            session: item.session,
+            status: item.status,
+            note: item.note ?? "",
+          })),
+        };
+      })
+      .filter((row) => row.days.length)
+      .filter((row) => !q || `${row.name} ${row.permanentId}`.toLowerCase().includes(q));
+    res.json({
+      month,
+      year: year ? { id: year.id, name: year.name } : null,
+      classes: byClass,
+      students: people,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 attendanceRouter.get("/attendance-sheet", requireAuth, requireRole("TEACHER", "SCHOOL_ADMIN"), async (req, res, next) => {
   try {
     const sectionId = String(req.query.sectionId ?? "");
@@ -196,9 +349,6 @@ attendanceRouter.put("/attendance-sheet", requireAuth, requireRole("TEACHER", "S
   try {
     const body = saveSchema.safeParse(req.body);
     if (!body.success) throw new HttpError(400, "Attendance could not be saved.");
-    if (body.data.rows.some((row) => row.status === "EXCUSED" && !row.note?.trim())) {
-      throw new HttpError(400, "An excused student needs a reason.");
-    }
     const section = await assertSectionAccess(req.authUser!.id, req.authUser!.role, body.data.sectionId);
     if (!section.classGroup.academicYear.isCurrent) {
       throw new HttpError(400, "Attendance can only be taken for the current academic year.");
@@ -457,7 +607,6 @@ attendanceRouter.patch("/attendance-records/:id", requireAuth, requireRole("SCHO
       note: z.string().trim().max(200).optional().or(z.literal("")),
     }).safeParse(req.body);
     if (!body.success) throw new HttpError(400, "Choose a valid attendance status.");
-    if (body.data.status === "EXCUSED" && !body.data.note?.trim()) throw new HttpError(400, "An excused student needs a reason.");
     const record = await prisma.attendanceRecord.findFirst({
       where: { id: String(req.params.id), enrollment: { schoolId: admin.school.id } },
       include: { enrollment: { include: { student: true } } },
@@ -467,7 +616,7 @@ attendanceRouter.patch("/attendance-records/:id", requireAuth, requireRole("SCHO
       where: { id: record.id },
       data: {
         status: body.data.status,
-        note: body.data.status === "EXCUSED" ? body.data.note?.trim() || null : null,
+        note: body.data.note?.trim() || null,
         markedByUserId: req.authUser!.id,
       },
     });

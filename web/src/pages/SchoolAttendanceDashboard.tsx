@@ -229,9 +229,10 @@ export function SchoolAttendanceDashboard() {
             ))}
           </div>
 
-          {tab === "Take attendance" ? <AttendancePage /> : null}
+          {tab === "Take attendance" ? <AttendancePage adminMode /> : null}
+          {tab === "Monthly Summary" ? <AttendancePage adminMode initialView="month" /> : null}
 
-          {tab === "Students" || tab === "Monthly Summary" ? (
+          {tab === "Students" ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex gap-3 border-b border-slate-100 p-3">
                 <input className="w-72 rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Search name, ID, or roll" value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }} />
