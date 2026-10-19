@@ -328,12 +328,12 @@ export function Shell({
   }
 
   const schoolMenu = user.role === "SCHOOL_ADMIN";
-  const hideShellTitle = schoolMenu && (title === "Parents" || title === "Students" || title === "Attendance");
+  const hideShellTitle = schoolMenu && (title === "Parents" || title === "Students" || title === "Attendance" || title === "Student profile");
 
   return (
     <div className="flex min-h-screen bg-[#f5f7fb] text-slate-900">
       {menuOpen ? <button className="fixed inset-0 z-30 bg-slate-950/40 md:hidden" aria-label="Close menu" onClick={() => setMenuOpen(false)} /> : null}
-      <aside className={`${menuOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 z-40 flex w-64 flex-col transition-transform md:static md:translate-x-0 ${schoolMenu ? "border-r border-sky-100 bg-white text-slate-700" : "bg-[#0f172a] text-slate-200"}`}>
+      <aside className={`${menuOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 z-40 flex w-60 flex-col transition-transform md:static md:translate-x-0 ${schoolMenu ? "border-r border-sky-100 bg-white text-slate-700" : "bg-[#0f172a] text-slate-200"}`}>
         <div className={`flex items-center gap-3 px-5 py-5 ${schoolMenu ? "border-b border-sky-100 bg-gradient-to-br from-sky-50 to-white" : ""}`}>
           <img src="/school-logo.svg" alt="" className="h-12 w-12 rounded-full bg-white object-cover" />
           <div className="min-w-0">
@@ -375,7 +375,7 @@ export function Shell({
         </div>
       </aside>
       <section className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 backdrop-blur md:px-6">
+        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200/80 bg-white/95 px-3 backdrop-blur md:px-6">
           <button className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 md:hidden" aria-label="Open menu" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button>
           <form className="relative min-w-0 flex-1 md:mx-auto md:max-w-xl" onSubmit={submitSearch}>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -392,7 +392,7 @@ export function Shell({
             </div>
           </div>
         </header>
-        <div className="flex-1 px-4 py-5 md:px-6">
+        <div className="min-w-0 flex-1 px-3 py-3 md:px-4 md:py-4 xl:px-6 xl:py-6">
           {user.actingFromSuperAdmin && user.school ? (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-white px-4 py-3 shadow-sm">
               <div>

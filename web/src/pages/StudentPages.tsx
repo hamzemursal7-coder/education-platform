@@ -55,9 +55,9 @@ function statusCaption(status?: string) {
 function AverageCard({ label, value, status, tone }: { label: string; value: number | null; status?: string; tone: string }) {
   const caption = status === "final" ? "Final" : status === "provisional" ? "Provisional" : value == null ? "Not available" : "";
   return (
-    <article className={`rounded-2xl border p-4 shadow-sm ${tone}`}>
-      <p className="text-sm font-medium">{label}</p>
-      <p className="mt-2 text-3xl font-bold">{value == null ? "—" : `${value}%`}</p>
+    <article className={`min-w-0 rounded-xl border px-3 py-3 shadow-sm xl:px-4 ${tone}`}>
+      <p className="text-[13px] font-medium">{label}</p>
+      <p className="mt-1 text-[22px] font-bold leading-none xl:text-2xl">{value == null ? "—" : `${value}%`}</p>
       {caption ? <p className="mt-1 text-xs font-medium opacity-80">{caption}</p> : null}
     </article>
   );
@@ -75,10 +75,19 @@ function studentAge(dateOfBirth: string) {
 
 function MetaChip({ icon, label }: { icon: ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1 text-sm text-slate-700">
+    <span className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 text-[13px] text-slate-700">
       <span className="text-blue-600">{icon}</span>
-      {label}
+      <span className="truncate">{label}</span>
     </span>
+  );
+}
+
+function ProfileField({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className={`min-w-0 ${wide ? "md:col-span-2 xl:col-span-4" : ""}`}>
+      <dt className="text-[13px] text-slate-500">{label}</dt>
+      <dd className="mt-0.5 break-words text-sm font-medium text-slate-900">{value}</dd>
+    </div>
   );
 }
 
@@ -863,6 +872,7 @@ export function StudentProfilePage() {
   const [passwordLink, setPasswordLink] = useState<{ url: string; email?: string } | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [placementSection, setPlacementSection] = useState("");
+  const [moveClass, setMoveClass] = useState("");
   const [moveOpen, setMoveOpen] = useState(false);
   const [movingStudent, setMovingStudent] = useState(false);
   const [assignableTeachers, setAssignableTeachers] = useState<AssignableTeacher[]>([]);
@@ -997,58 +1007,35 @@ export function StudentProfilePage() {
   const iconSm = "h-4 w-4";
 
   return (
-    <div className="space-y-6">
-      <article className="flex flex-wrap items-start gap-5 rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
-        <div className="relative">
+    <div className="w-full min-w-0 space-y-4">
+      <article className="flex min-h-[120px] flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm xl:min-h-[140px]">
+        <div className="relative shrink-0">
           {profile.photoUrl ? (
-            <img src={profile.photoUrl} alt="" className="h-28 w-28 rounded-full object-cover" />
+            <img src={profile.photoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
           ) : (
-            <div className={`grid h-28 w-28 place-items-center rounded-full text-2xl font-semibold text-white ${avatarTone(profile.permanentId)}`}>
+            <div className={`grid h-16 w-16 place-items-center rounded-full text-lg font-semibold text-white ${avatarTone(profile.permanentId)}`}>
               {initials(fullName)}
             </div>
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-2xl font-semibold">{fullName}</h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <MetaChip icon={<IdCard className={iconSm} />} label={profile.permanentId} />
-            {profile.secondaryPermanentId ? <MetaChip icon={<IdCard className={iconSm} />} label={profile.secondaryPermanentId} /> : null}
-            <MetaChip icon={<BadgeCheck className={iconSm} />} label={profile.status} />
-            <MetaChip icon={<UserRound className={iconSm} />} label={`Age ${age}`} />
-            {profile.school ? <MetaChip icon={<BookOpen className={iconSm} />} label={profile.school.name} /> : null}
-            <MetaChip icon={<UserRound className={iconSm} />} label={profile.gender} />
-            <MetaChip icon={<CalendarDays className={iconSm} />} label={`DOB ${profile.dateOfBirth.slice(0, 10)}`} />
-            <MetaChip icon={<IdCard className={iconSm} />} label={`NIRA ${profile.nationalId || "—"}`} />
-            {profile.previousSchool ? <MetaChip icon={<BookOpen className={iconSm} />} label={`From ${profile.previousSchool.name}${profile.previousClass ? ` · ${profile.previousClass}` : ""}`} /> : null}
-            {profile.phone ? <MetaChip icon={<Phone className={iconSm} />} label={profile.phone} /> : null}
-            {current ? (
-              <>
-                <MetaChip icon={<CalendarDays className={iconSm} />} label={current.academicYear.name} />
-                <MetaChip icon={<BookOpen className={iconSm} />} label={current.level} />
-                <MetaChip icon={<Users className={iconSm} />} label={`Section ${current.section.name}`} />
-                <MetaChip icon={<Hash className={iconSm} />} label={`No. ${current.studentNumber}`} />
-                <MetaChip icon={<Hash className={iconSm} />} label={`Roll ${current.rollNumber}`} />
-              </>
-            ) : null}
-            {profile.guardians[0] ? (
-              <MetaChip icon={<Users className={iconSm} />} label={`${profile.guardians[0].guardian.firstName} ${profile.guardians[0].guardian.lastName}`} />
-            ) : (
-              <MetaChip icon={<Users className={iconSm} />} label="No parent yet" />
-            )}
-            {profile.transfers.length ? (
-              <MetaChip icon={<ArrowLeftRight className={iconSm} />} label={`${profile.transfers.length} transfer(s)`} />
-            ) : null}
+          <h2 className="truncate text-xl font-bold text-slate-950">{fullName}</h2>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <MetaChip icon={<IdCard className="h-3.5 w-3.5" />} label={profile.permanentId} />
+            <MetaChip icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.status} />
+            {current ? <MetaChip icon={<BookOpen className="h-3.5 w-3.5" />} label={`${current.level} · ${current.section.name}`} /> : null}
+            {current ? <MetaChip icon={<Hash className="h-3.5 w-3.5" />} label={`Roll ${current.rollNumber}`} /> : null}
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white" onClick={() => setEditing(true)}>Edit</button>
-            <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => {
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className="inline-flex h-9 items-center rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white" onClick={() => setEditing(true)}>Edit</button>
+            <button type="button" className="inline-flex h-9 items-center rounded-xl border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700" onClick={() => {
               const email = profile.hasLogin ? undefined : window.prompt("Student email for portal invite:") || undefined;
               if (!profile.hasLogin && profile.portalStatus === "NONE" && !email) return;
               api<{ setPasswordPath: string }>(`/api/v1/students/${studentId}/access`, { method: "POST", body: JSON.stringify({ email }) })
                 .then((result) => setPasswordLink({ url: passwordLinkUrl(result.setPasswordPath), email }))
                 .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update login access."));
             }}>{profile.hasLogin ? "Reset password" : "Invite login"}</button>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500">
+          <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500">
             <Upload className={iconSm} />
             {photoBusy ? "Uploading..." : "Upload photo"}
             <input
@@ -1066,22 +1053,10 @@ export function StudentProfilePage() {
         </div>
       </article>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <article className="rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm lg:col-span-2">
-          <h3 className="font-semibold text-slate-950">Student profile</h3>
-          <p className="mt-1 text-sm text-slate-500">ID, age, roll, class, and the rest of this student's record. Edit the details here.</p>
-          <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-            <div><dt className="text-slate-500">Student ID</dt><dd className="font-medium text-slate-900">{profile.permanentId}</dd></div>
-            <div><dt className="text-slate-500">Secondary ID</dt><dd className="font-medium text-slate-900">{profile.secondaryPermanentId || "—"}</dd></div>
-            <div><dt className="text-slate-500">Age</dt><dd className="font-medium text-slate-900">{age}</dd></div>
-            <div><dt className="text-slate-500">Roll</dt><dd className="font-medium text-slate-900">{current ? current.rollNumber : "—"}</dd></div>
-            <div><dt className="text-slate-500">Student number</dt><dd className="font-medium text-slate-900">{current?.studentNumber || "—"}</dd></div>
-            <div><dt className="text-slate-500">Class</dt><dd className="font-medium text-slate-900">{current?.level || "—"}</dd></div>
-            <div><dt className="text-slate-500">Section</dt><dd className="font-medium text-slate-900">{current ? current.section.name : "—"}</dd></div>
-            <div><dt className="text-slate-500">Academic year</dt><dd className="font-medium text-slate-900">{current?.academicYear.name || "—"}</dd></div>
-            <div><dt className="text-slate-500">School</dt><dd className="font-medium text-slate-900">{profile.school?.name || "—"}</dd></div>
-            <div><dt className="text-slate-500">Status</dt><dd className="font-medium text-slate-900">{profile.status}</dd></div>
-          </dl>
+      <div className="grid gap-4">
+        <article className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 text-slate-800 shadow-sm md:p-5">
+          <h3 className="text-base font-semibold text-slate-950">Student profile</h3>
+          <p className="mt-1 text-[13px] text-slate-500">ID, age, roll, class, and the rest of this student's record. Edit the details here.</p>
           {editing ? (
             <form className="mt-4" onSubmit={(event) => {
               event.preventDefault();
@@ -1089,7 +1064,7 @@ export function StudentProfilePage() {
                 .then(() => { setEditing(false); setMessage("Student details updated."); return loadProfile(); })
                 .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update the student."));
             }}>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-x-3 gap-y-3 md:grid-cols-2 md:gap-x-5 xl:grid-cols-4">
                 <label className="text-sm text-slate-600">First name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.firstName} onChange={(event) => setEditForm({ ...editForm, firstName: event.target.value })} required /></label>
                 <label className="text-sm text-slate-600">Father name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.fatherName} onChange={(event) => setEditForm({ ...editForm, fatherName: event.target.value })} required /></label>
                 <label className="text-sm text-slate-600">Grandfather name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.grandfatherName} onChange={(event) => setEditForm({ ...editForm, grandfatherName: event.target.value })} required /></label>
@@ -1111,7 +1086,7 @@ export function StudentProfilePage() {
                 <label className="text-sm text-slate-600">Previous class<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.previousClass} onChange={(event) => setEditForm({ ...editForm, previousClass: event.target.value })} /></label>
                 <label className="text-sm text-slate-600">Leaving year<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.leavingYear} onChange={(event) => setEditForm({ ...editForm, leavingYear: event.target.value })} /></label>
                 <label className="text-sm text-slate-600">Transfer certificate<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.transferCertificateNo} onChange={(event) => setEditForm({ ...editForm, transferCertificateNo: event.target.value })} /></label>
-                <label className="text-sm text-slate-600 sm:col-span-2 lg:col-span-3">Notes<textarea className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.notes} onChange={(event) => setEditForm({ ...editForm, notes: event.target.value })} /></label>
+                <label className="text-[13px] text-slate-600 md:col-span-2 xl:col-span-4">Notes<textarea className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.notes} onChange={(event) => setEditForm({ ...editForm, notes: event.target.value })} /></label>
               </div>
               <div className="mt-4 flex gap-2">
                 <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Save</button>
@@ -1119,57 +1094,67 @@ export function StudentProfilePage() {
               </div>
             </form>
           ) : (
-            <dl className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-              <div><dt className="text-slate-500">First name</dt><dd className="font-medium text-slate-900">{profile.firstName}</dd></div>
-              <div><dt className="text-slate-500">Father name</dt><dd className="font-medium text-slate-900">{profile.fatherName}</dd></div>
-              <div><dt className="text-slate-500">Grandfather name</dt><dd className="font-medium text-slate-900">{profile.grandfatherName}</dd></div>
-              <div><dt className="text-slate-500">Gender</dt><dd className="font-medium text-slate-900">{profile.gender}</dd></div>
-              <div><dt className="text-slate-500">Date of birth</dt><dd className="font-medium text-slate-900">{profile.dateOfBirth.slice(0, 10)}</dd></div>
-              <div><dt className="text-slate-500">Phone</dt><dd className="font-medium text-slate-900">{profile.phone || "—"}</dd></div>
-              <div><dt className="text-slate-500">NIRA</dt><dd className="font-medium text-slate-900">{profile.nationalId || "—"}</dd></div>
-              <div><dt className="text-slate-500">Parent</dt><dd className="font-medium text-slate-900">{profile.guardians.length ? profile.guardians.map((link) => `${link.guardian.firstName} ${link.guardian.lastName}`).join(", ") : "Not linked"}</dd></div>
-              <div><dt className="text-slate-500">Previous school</dt><dd className="font-medium text-slate-900">{profile.previousSchool?.name || "—"}</dd></div>
-              <div><dt className="text-slate-500">Previous class</dt><dd className="font-medium text-slate-900">{profile.previousClass || "—"}</dd></div>
-              <div><dt className="text-slate-500">Leaving year</dt><dd className="font-medium text-slate-900">{profile.leavingYear || "—"}</dd></div>
-              <div><dt className="text-slate-500">Transfer certificate</dt><dd className="font-medium text-slate-900">{profile.transferCertificateNo || "—"}</dd></div>
-              <div className="sm:col-span-2 lg:col-span-4"><dt className="text-slate-500">Notes</dt><dd className="font-medium text-slate-900">{profile.staffNotes || "—"}</dd></div>
+            <dl className="mt-4 grid grid-cols-1 gap-x-3 gap-y-4 border-t border-slate-100 pt-4 md:grid-cols-2 md:gap-x-5 xl:grid-cols-4">
+              <ProfileField label="Student ID" value={profile.permanentId} />
+              <ProfileField label="Secondary ID" value={profile.secondaryPermanentId || "—"} />
+              <ProfileField label="Age" value={age} />
+              <ProfileField label="Roll" value={current ? String(current.rollNumber) : "—"} />
+              <ProfileField label="Student number" value={current?.studentNumber || "—"} />
+              <ProfileField label="Class" value={current?.level || "—"} />
+              <ProfileField label="Section" value={current ? current.section.name : "—"} />
+              <ProfileField label="Academic year" value={current?.academicYear.name || "—"} />
+              <ProfileField label="School" value={profile.school?.name || "—"} />
+              <ProfileField label="Status" value={profile.status} />
+              <ProfileField label="First name" value={profile.firstName} />
+              <ProfileField label="Father name" value={profile.fatherName} />
+              <ProfileField label="Grandfather name" value={profile.grandfatherName} />
+              <ProfileField label="Gender" value={profile.gender} />
+              <ProfileField label="Date of birth" value={profile.dateOfBirth.slice(0, 10)} />
+              <ProfileField label="Phone" value={profile.phone || "—"} />
+              <ProfileField label="NIRA" value={profile.nationalId || "—"} />
+              <ProfileField label="Parent" value={profile.guardians.length ? profile.guardians.map((link) => `${link.guardian.firstName} ${link.guardian.lastName}`).join(", ") : "Not linked"} />
+              <ProfileField label="Previous school" value={profile.previousSchool?.name || "—"} />
+              <ProfileField label="Previous class" value={profile.previousClass || "—"} />
+              <ProfileField label="Leaving year" value={profile.leavingYear || "—"} />
+              <ProfileField label="Transfer certificate" value={profile.transferCertificateNo || "—"} />
+              <ProfileField label="Notes" value={profile.staffNotes || "—"} wide />
             </dl>
           )}
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+        <article className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm md:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><Users className="h-5 w-5" /></span>
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><Users className="h-4 w-4" /></span>
               <div>
-                <h3 className="font-semibold text-slate-950">Parent</h3>
-                <p className="mt-1 text-sm text-slate-500">Link an existing parent, or add a new parent.</p>
+                <h3 className="text-base font-semibold text-slate-950">Parent</h3>
+                <p className="mt-0.5 text-[13px] text-slate-500">Link an existing parent, or add a new parent.</p>
               </div>
             </div>
-            <p className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-xs text-blue-700"><Info className="h-4 w-4" /> A student can be linked to one or more parents or guardians.</p>
+            <p className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-2.5 py-1 text-xs text-blue-700"><Info className="h-3.5 w-3.5" /> A student can be linked to one or more parents or guardians.</p>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <button type="button" className={`rounded-2xl border p-4 text-left ${parentAssignMode === "search" ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`} onClick={() => setParentAssignMode("search")}>
-              <span className="flex items-center gap-2 font-semibold text-slate-950"><Search className="h-4 w-4 text-blue-600" /> Link to an existing parent</span>
-              <span className="mt-1 block text-sm text-slate-500">Search and link an existing parent.</span>
+          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <button type="button" className={`min-h-16 rounded-xl border px-3 py-2 text-left ${parentAssignMode === "search" ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`} onClick={() => setParentAssignMode("search")}>
+              <span className="flex items-center gap-2 text-sm font-semibold text-slate-950"><Search className="h-4 w-4 text-blue-600" /> Link to an existing parent</span>
+              <span className="mt-0.5 block text-[13px] text-slate-500">Search and link an existing parent.</span>
             </button>
-            <button type="button" className={`rounded-2xl border p-4 text-left ${parentAssignMode === "new" ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`} onClick={() => { setParentAssignMode("new"); setGuardianHits([]); }}>
-              <span className="flex items-center gap-2 font-semibold text-slate-950"><Plus className="h-4 w-4 text-blue-600" /> Add new parent</span>
-              <span className="mt-1 block text-sm text-slate-500">Create a new parent and link to this student.</span>
+            <button type="button" className={`min-h-16 rounded-xl border px-3 py-2 text-left ${parentAssignMode === "new" ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`} onClick={() => { setParentAssignMode("new"); setGuardianHits([]); }}>
+              <span className="flex items-center gap-2 text-sm font-semibold text-slate-950"><Plus className="h-4 w-4 text-blue-600" /> Add new parent</span>
+              <span className="mt-0.5 block text-[13px] text-slate-500">Create a new parent and link to this student.</span>
             </button>
           </div>
           {parentAssignMode === "search" ? (
             <section className="mt-4 rounded-2xl border border-slate-200 p-4">
               <h4 className="flex items-center gap-2 font-semibold text-slate-950"><Search className="h-4 w-4 text-blue-600" /> Link to an existing parent</h4>
               <p className="mt-1 text-sm text-slate-500">Search by name, email, parent ID, or phone number to link an existing parent.</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <input className="min-w-48 flex-1 rounded-xl border border-slate-200 px-3 py-2.5" placeholder="Name, email, parent ID, or phone number..." value={guardianQuery} onChange={(event) => setGuardianQuery(event.target.value)} />
-                <select className="rounded-xl border border-slate-200 px-3 py-2.5" value={relationship} onChange={(event) => setRelationship(event.target.value)}>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3" placeholder="Name, email, parent ID, or phone number..." value={guardianQuery} onChange={(event) => setGuardianQuery(event.target.value)} />
+                <select className="h-10 rounded-xl border border-slate-200 px-3" value={relationship} onChange={(event) => setRelationship(event.target.value)}>
                   <option value="FATHER">Father</option>
                   <option value="MOTHER">Mother</option>
                   <option value="GUARDIAN">Guardian</option>
                 </select>
-                <button type="button" className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white" onClick={async () => {
+                <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white" onClick={async () => {
                   setError("");
                   try {
                     const hits = await api<typeof guardianHits>(`/api/v1/guardians?q=${encodeURIComponent(guardianQuery)}`);
@@ -1298,10 +1283,10 @@ export function StudentProfilePage() {
               </div>
             </section>
           )}
-          <section className="mt-4 rounded-2xl border border-slate-200 p-4">
-            <h4 className="font-semibold text-slate-950">Linked parent{profile.guardians.length === 1 ? "" : "s"} <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{profile.guardians.length}</span></h4>
-            <p className="mt-1 text-sm text-slate-500">Parent(s) linked to this student.</p>
-            <div className="mt-3 space-y-2">
+          <section className="mt-3 rounded-xl border border-slate-200 p-3">
+            <h4 className="text-base font-semibold text-slate-950">Linked parent{profile.guardians.length === 1 ? "" : "s"} <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{profile.guardians.length}</span></h4>
+            <p className="mt-0.5 text-[13px] text-slate-500">Parent(s) linked to this student.</p>
+            <div className="mt-2 space-y-2">
               {profile.guardians.map((link) => (
                 <div key={link.guardian.publicId} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 px-3 py-3">
                   <Link to={`/school/parents/${link.guardian.id}`} className="shrink-0">
@@ -1376,43 +1361,38 @@ export function StudentProfilePage() {
       </div>
 
       <div>
-        <p className="mb-2 text-sm text-slate-500">{profile.averages?.year ? `${profile.averages.year} · ${profile.averages.level} · Section ${profile.averages.section}${profile.averages.outcome ? ` · ${profile.averages.outcome}` : ""}` : "No published year average yet."}</p>
-        <div className="grid gap-3 md:grid-cols-3">
+        <p className="mb-2 text-[13px] text-slate-500">{profile.averages?.year ? `${profile.averages.year} · ${profile.averages.level} · Section ${profile.averages.section}${profile.averages.outcome ? ` · ${profile.averages.outcome}` : ""}` : "No published year average yet."}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <AverageCard label="Term 1 average" value={profile.averages?.term1 ?? null} status={profile.averages?.term1Status} tone="border-blue-100 bg-blue-50 text-blue-800" />
           <AverageCard label="Term 2 average" value={profile.averages?.term2 ?? null} status={profile.averages?.term2Status} tone="border-violet-100 bg-violet-50 text-violet-800" />
           <AverageCard label="Overall academic year average" value={profile.averages?.combined ?? null} status={profile.averages?.combinedStatus} tone="border-emerald-100 bg-emerald-50 text-emerald-800" />
         </div>
       </div>
       {profile.placement && current ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+        <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h3 className="font-semibold text-slate-950">Move within this school</h3>
-              <p className="mt-1 text-sm text-slate-500">Choose the destination class and section. Nothing changes until you confirm.</p>
+              <h3 className="text-base font-semibold text-slate-950">Move within this school</h3>
+              <p className="mt-0.5 text-[13px] text-slate-500">Now {current.level} · Section {current.section.name}. Nothing changes until you confirm.</p>
             </div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">{profile.school?.name} · {profile.placement.year}</span>
+            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{profile.school?.name} · {profile.placement.year}</span>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
-            <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Now</p>
-              <p className="mt-2 text-lg font-semibold text-slate-950">{current.level}</p>
-              <p className="text-sm text-slate-600">Section {current.section.name}</p>
-              <p className="mt-1 text-xs text-slate-500">{profile.placement.year}</p>
-            </article>
-            <div className="hidden items-center justify-center text-slate-300 md:flex"><ArrowLeftRight className="h-5 w-5" /></div>
-            <label className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 text-sm font-medium text-slate-700">
-              <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">Destination</span>
-              <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" value={placementSection} onChange={(event) => setPlacementSection(event.target.value)}>
-                <option value="">Choose class and section</option>
-                {profile.placement.sections.filter((section) => section.id !== profile.placement?.sectionId).map((section) => <option key={section.id} value={section.id}>{section.label}</option>)}
+          <div className="mt-3 grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_1fr_auto]">
+            <label className="min-w-0 text-[13px] font-medium text-slate-700">Class / Form
+              <select className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" value={moveClass} onChange={(event) => { setMoveClass(event.target.value); setPlacementSection(""); }}>
+                <option value="">Select class</option>
+                {[...new Set(profile.placement.sections.filter((section) => section.id !== profile.placement?.sectionId).map((section) => section.label.split(" · Section ")[0]))].map((label) => <option key={label} value={label}>{label}</option>)}
               </select>
-              <p className="mt-2 text-xs font-normal text-slate-500">Same school and same year. A new roll number is created after you confirm.</p>
             </label>
+            <label className="min-w-0 text-[13px] font-medium text-slate-700">Section
+              <select className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" value={placementSection} onChange={(event) => setPlacementSection(event.target.value)} disabled={!moveClass}>
+                <option value="">Select section</option>
+                {profile.placement.sections.filter((section) => section.id !== profile.placement?.sectionId && section.label.startsWith(`${moveClass} · Section `)).map((section) => <option key={section.id} value={section.id}>{section.label.split(" · Section ")[1] ?? section.label}</option>)}
+              </select>
+            </label>
+            <button type="button" className="h-10 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!placementSection || placementSection === profile.placement.sectionId} onClick={() => setMoveOpen(true)}>Move student</button>
           </div>
-          {!profile.placement.sections.some((section) => section.id !== profile.placement?.sectionId) ? <p className="mt-3 text-sm text-amber-800">This year has no other class or section to move to.</p> : null}
-          <div className="mt-4 flex justify-end">
-            <button type="button" className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!placementSection || placementSection === profile.placement.sectionId} onClick={() => setMoveOpen(true)}>Review move</button>
-          </div>
+          {!profile.placement.sections.some((section) => section.id !== profile.placement?.sectionId) ? <p className="mt-2 text-[13px] text-amber-800">This year has no other class or section to move to.</p> : null}
         </section>
       ) : null}
       {moveOpen && profile.placement && current ? (
@@ -1472,21 +1452,21 @@ export function StudentProfilePage() {
       </div>
 
       {tab === "Overview" ? (
-        <div className="grid gap-4 md:grid-cols-3">
-          <article className="rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
-            <p className="text-sm text-slate-500">Attendance rate</p>
-            <p className="mt-2 text-2xl font-semibold">{profile.attendanceStats.rate == null ? "—" : `${profile.attendanceStats.rate}%`}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <article className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-slate-800 shadow-sm">
+            <p className="text-[13px] text-slate-500">Attendance rate</p>
+            <p className="mt-1 text-[22px] font-bold leading-none">{profile.attendanceStats.rate == null ? "—" : `${profile.attendanceStats.rate}%`}</p>
           </article>
-          <article className="rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
-            <p className="text-sm text-slate-500">Fee balance</p>
-            <p className="mt-2 text-2xl font-semibold">{profile.fees.reduce((sum, fee) => sum + fee.balance, 0)}</p>
+          <article className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-slate-800 shadow-sm">
+            <p className="text-[13px] text-slate-500">Fee balance</p>
+            <p className="mt-1 text-[22px] font-bold leading-none">{profile.fees.reduce((sum, fee) => sum + fee.balance, 0)}</p>
           </article>
-          <article className="rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
-            <p className="text-sm text-slate-500">Enrollments</p>
-            <p className="mt-2 text-2xl font-semibold">{profile.enrollments.length}</p>
+          <article className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-slate-800 shadow-sm">
+            <p className="text-[13px] text-slate-500">Enrollments</p>
+            <p className="mt-1 text-[22px] font-bold leading-none">{profile.enrollments.length}</p>
           </article>
           {profile.alumniRecords.map((row) => (
-            <article key={row.createdAt} className="rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm md:col-span-3">
+            <article key={row.createdAt} className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-800 shadow-sm sm:col-span-2 xl:col-span-3">
               Alumni: {row.schoolName} · {row.fromLevel} · {row.reason}
             </article>
           ))}
@@ -1510,20 +1490,20 @@ export function StudentProfilePage() {
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${outcomeTone(outcome.code)}`}>{outcome.label}</span>
                 </div>
                 {outcome.detail ? <p className="mt-3 text-sm text-slate-600">{outcome.detail}</p> : null}
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <article className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <article className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Term 1 average</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-950">{averageText(exam?.term1.average ?? null)}</p>
+                    <p className="mt-1 text-[22px] font-bold leading-none text-slate-950">{averageText(exam?.term1.average ?? null)}</p>
                     <p className="mt-1 text-xs text-slate-500">{exam && exam.term1.possible > 0 ? `${exam.term1.obtained} / ${exam.term1.possible} · ${statusCaption(exam.term1.status)}` : statusCaption(exam?.term1.status)}</p>
                   </article>
-                  <article className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+                  <article className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Term 2 average</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-950">{averageText(exam?.term2.average ?? null)}</p>
+                    <p className="mt-1 text-[22px] font-bold leading-none text-slate-950">{averageText(exam?.term2.average ?? null)}</p>
                     <p className="mt-1 text-xs text-slate-500">{exam && exam.term2.possible > 0 ? `${exam.term2.obtained} / ${exam.term2.possible} · ${statusCaption(exam.term2.status)}` : statusCaption(exam?.term2.status)}</p>
                   </article>
-                  <article className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                  <article className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Year average</p>
-                    <p className="mt-2 text-2xl font-semibold text-slate-950">{averageText(exam?.overall.average ?? null)}</p>
+                    <p className="mt-1 text-[22px] font-bold leading-none text-slate-950">{averageText(exam?.overall.average ?? null)}</p>
                     <p className="mt-1 text-xs text-slate-500">{exam && exam.overall.possible > 0 ? `${exam.overall.obtained} / ${exam.overall.possible} · ${statusCaption(exam.overall.status)}` : statusCaption(exam?.overall.status)}</p>
                   </article>
                 </div>
