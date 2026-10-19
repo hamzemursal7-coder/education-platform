@@ -20,6 +20,7 @@ import {
   Upload,
   UserRound,
   Users,
+  X,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { Avatar, DataTable, FeeBadge, initials, avatarTone } from "../components/PeopleList";
@@ -157,6 +158,7 @@ export function StudentsPage() {
   const [error, setError] = useState("");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
 
   useEffect(() => {
     api<{ years: YearOption[]; levels: Array<{ code: string; label: string }> }>("/api/v1/academic-years")
@@ -294,36 +296,38 @@ export function StudentsPage() {
           </label>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-400">
+          <table className="w-full min-w-[920px] text-left text-sm">
+            <thead className="bg-sky-50 text-[11px] uppercase tracking-wide text-slate-400">
               <tr>
-                {["#", "Student", "Status", "Parent", "Actions"].map((heading) => (
-                  <th key={heading} className="px-3 py-3 font-semibold">{heading}</th>
+                {["Profile", "Student ID", "Roll no.", "Name", "Class / Form", "Section", "Parent / Contact", "Enrollment status", "Actions"].map((heading) => (
+                  <th key={heading} className="px-4 py-3 font-semibold">{heading}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-                {visible.map((row, index) => (
-                <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50">
-                  <td className="px-4 py-4 text-sm text-slate-400">{(currentPage - 1) * 10 + index + 1}</td>
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={row.name} seed={row.permanentId} photoUrl={row.photoUrl} />
-                      <div>
-                        <p className="whitespace-nowrap text-base font-semibold text-slate-900">{row.name}</p>
-                        <p className="whitespace-nowrap font-mono text-sm text-slate-600">{row.permanentId}</p>
-                        <p className="whitespace-nowrap text-sm text-slate-500">{row.level} · Section {row.section}</p>
-                      </div>
-                    </div>
+              {visible.map((row) => (
+                <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/80">
+                  <td className="px-4 py-3">
+                    {row.photoUrl ? (
+                      <button type="button" className="rounded-full ring-2 ring-transparent transition hover:ring-blue-200" title="View photo" onClick={() => setPhotoPreview({ url: row.photoUrl!, name: row.name })}>
+                        <Avatar name={row.name} seed={row.permanentId} photoUrl={row.photoUrl} size="sm" />
+                      </button>
+                    ) : (
+                      <Avatar name={row.name} seed={row.permanentId} size="sm" />
+                    )}
                   </td>
-                  <td className="px-4 py-4"><StudentStatusBadge status={row.listStatus ?? "ACTIVE"} /></td>
-                  <td className="px-4 py-4">
-                    <p className="whitespace-nowrap text-base font-semibold text-slate-900">{row.parent ?? "—"}</p>
-                    <p className="whitespace-nowrap text-sm text-blue-700">{row.parentEmail || "—"}</p>
-                    <p className="whitespace-nowrap text-sm text-slate-600">{row.parentPhone || "—"}</p>
+                  <td className="px-4 py-3 font-medium text-slate-600">{row.permanentId}</td>
+                  <td className="px-4 py-3 text-slate-600">{row.rollNumber ?? "—"}</td>
+                  <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
+                  <td className="px-4 py-3 text-slate-700">{row.level}</td>
+                  <td className="px-4 py-3 text-slate-700">{row.section}</td>
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-slate-800">{row.parent ?? "—"}</p>
+                    <p className="text-xs text-slate-500">{row.parentPhone || row.parentEmail || "—"}</p>
                   </td>
-                  <td className="px-4 py-4">
-                    <Link className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm font-semibold text-blue-600 hover:bg-blue-50" to={`/school/students/${row.id}`}>
+                  <td className="px-4 py-3"><StudentStatusBadge status={row.listStatus ?? "ACTIVE"} /></td>
+                  <td className="px-4 py-3">
+                    <Link className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700" to={`/school/students/${row.id}`}>
                       <Eye className="h-4 w-4" /> View
                     </Link>
                   </td>
@@ -333,16 +337,47 @@ export function StudentsPage() {
           </table>
           {!filtered.length ? <p className="px-4 py-10 text-center text-sm text-slate-500">No students match these filters.</p> : null}
         </div>
-        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-          <span>{filtered.length ? `Showing ${(currentPage - 1) * 10 + 1} to ${Math.min(currentPage * 10, filtered.length)} of ${filtered.length}` : "Showing 0"}</span>
-          <div className="flex gap-1">
-            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-40" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Previous</button>
-            <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-40" disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}>Next</button>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
+          <span>{filtered.length ? `Showing ${(currentPage - 1) * 10 + 1} to ${Math.min(currentPage * 10, filtered.length)} of ${filtered.length} students` : "Showing 0 students"}</span>
+          <div className="flex items-center gap-1">
+            <span className="mr-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600">10 per page</span>
+            <button type="button" className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)} aria-label="Previous page">‹</button>
+            {listPages(currentPage, pageCount).map((item, index) => (
+              item === "…" ? (
+                <span key={`gap-${index}`} className="px-1 text-slate-400">…</span>
+              ) : (
+                <button key={item} type="button" className={`grid h-8 min-w-8 place-items-center rounded-lg px-2 text-sm font-semibold ${item === currentPage ? "bg-blue-600 text-white" : "border border-slate-200 text-slate-600 hover:bg-slate-50"}`} onClick={() => setPage(item)}>{item}</button>
+              )
+            ))}
+            <button type="button" className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 disabled:opacity-40" disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)} aria-label="Next page">›</button>
           </div>
         </div>
       </section>
+      {photoPreview ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-4" onClick={() => setPhotoPreview(null)}>
+          <div className="w-full max-w-xl overflow-hidden rounded-3xl bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <p className="font-semibold text-slate-900">{photoPreview.name}</p>
+              <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => setPhotoPreview(null)} aria-label="Close photo"><X className="h-5 w-5" /></button>
+            </div>
+            <img src={photoPreview.url} alt={photoPreview.name} className="max-h-[75vh] w-full bg-slate-100 object-contain" />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function listPages(current: number, total: number) {
+  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
+  const items: Array<number | "…"> = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) items.push("…");
+  for (let page = start; page <= end; page += 1) items.push(page);
+  if (end < total - 1) items.push("…");
+  items.push(total);
+  return items;
 }
 
 function FormSection({
