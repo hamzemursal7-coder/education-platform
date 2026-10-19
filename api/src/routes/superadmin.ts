@@ -274,6 +274,74 @@ superadminRouter.delete("/superadmin/schools/:id", async (req, res, next) => {
   }
 });
 
+superadminRouter.patch("/superadmin/schools/:id", async (req, res, next) => {
+  try {
+    const body = z.object({
+      name: z.string().trim().min(2).max(120),
+      address: z.string().trim().max(240).optional().or(z.literal("")),
+      type: z.enum(["PRIMARY_ONLY", "SECONDARY_ONLY", "PRIMARY_AND_SECONDARY"]),
+    }).safeParse(req.body);
+    if (!body.success) throw new HttpError(400, "School name and level are required.");
+    const school = await prisma.school.findUnique({ where: { id: String(req.params.id) } });
+    if (!school) throw new HttpError(404, "School was not found.");
+    const updated = await prisma.school.update({
+      where: { id: school.id },
+      data: {
+        name: body.data.name,
+        address: body.data.address?.trim() || null,
+        type: body.data.type,
+      },
+    });
+    await writeAudit({
+      schoolId: school.id,
+      actorUserId: req.authUser!.id,
+      action: "SCHOOL_UPDATE",
+      entityType: "School",
+      entityId: school.id,
+      summary: `Updated school ${updated.name}`,
+    });
+    res.json({ id: updated.id, name: updated.name, address: updated.address, type: updated.type });
+  } catch (error) {
+    next(error);
+  }
+});
+
+superadminRouter.patch("/superadmin/schools/:id/admins/:userId", async (req, res, next) => {
+  try {
+    const body = adminSchema.safeParse(req.body);
+    if (!body.success) throw new HttpError(400, "The admin's three names, phone number, and email are required.");
+    const school = await prisma.school.findUnique({ where: { id: String(req.params.id) } });
+    if (!school) throw new HttpError(404, "School was not found.");
+    const admin = await prisma.user.findFirst({
+      where: { id: String(req.params.userId), schoolId: school.id, role: "SCHOOL_ADMIN" },
+    });
+    if (!admin) throw new HttpError(404, "School admin was not found.");
+    const email = body.data.email.toLowerCase();
+    const taken = await prisma.user.findUnique({ where: { email } });
+    if (taken && taken.id !== admin.id) throw new HttpError(409, "This email is already used by another account.");
+    const updated = await prisma.user.update({
+      where: { id: admin.id },
+      data: {
+        firstName: body.data.firstName,
+        lastName: `${body.data.middleName} ${body.data.lastName}`,
+        email,
+        phone: body.data.phone,
+      },
+    });
+    await writeAudit({
+      schoolId: school.id,
+      actorUserId: req.authUser!.id,
+      action: "SCHOOL_ADMIN_UPDATE",
+      entityType: "User",
+      entityId: updated.id,
+      summary: `Updated school admin ${updated.email} for ${school.name}`,
+    });
+    res.json({ id: updated.id, email: updated.email, firstName: updated.firstName, lastName: updated.lastName });
+  } catch (error) {
+    next(error);
+  }
+});
+
 superadminRouter.post("/superadmin/schools/:id/admins", async (req, res, next) => {
   try {
     const body = adminSchema.safeParse(req.body);

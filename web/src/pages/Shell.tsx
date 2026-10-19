@@ -18,7 +18,6 @@ import {
   MapPin,
   Megaphone,
   Menu,
-  MoreVertical,
   Pencil,
   Phone,
   Plus,
@@ -80,10 +79,17 @@ type Summary = {
     alumni: number;
     feesCollected: number;
     feesOutstanding: number;
+    admin: { id: string; firstName: string; lastName: string; email: string; phone: string } | null;
   }>;
 };
 
 type OrgRow = { id: string; name: string; isDemo: boolean; schools: number };
+
+function splitAdminName(firstName: string, lastName: string) {
+  const rest = lastName.trim().split(/\s+/).filter(Boolean);
+  if (rest.length >= 2) return { firstName, middleName: rest[0], lastName: rest.slice(1).join(" ") };
+  return { firstName, middleName: "", lastName: lastName.trim() };
+}
 
 type SchoolDash = {
   school: { name: string; code: string; type: "PRIMARY_ONLY" | "SECONDARY_ONLY" | "PRIMARY_AND_SECONDARY" };
@@ -444,6 +450,18 @@ export function SuperAdminHome() {
     email: "",
     phone: "",
   });
+  const [editSchool, setEditSchool] = useState<Summary["schoolList"][number] | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    address: "",
+    type: "PRIMARY_AND_SECONDARY",
+    adminId: "",
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+  });
 
   async function load() {
     const [summaryRows, orgRows] = await Promise.all([
@@ -540,6 +558,63 @@ export function SuperAdminHome() {
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not invite admin.");
+    }
+  }
+
+  function openEdit(school: Summary["schoolList"][number]) {
+    const names = school.admin ? splitAdminName(school.admin.firstName, school.admin.lastName) : { firstName: "", middleName: "", lastName: "" };
+    setEditSchool(school);
+    setEditForm({
+      name: school.name,
+      address: school.address ?? "",
+      type: school.type,
+      adminId: school.admin?.id ?? "",
+      firstName: names.firstName,
+      middleName: names.middleName,
+      lastName: names.lastName,
+      email: school.admin?.email ?? "",
+      phone: school.admin?.phone ?? "",
+    });
+    setError("");
+  }
+
+  async function saveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editSchool) return;
+    setError("");
+    try {
+      await api(`/api/v1/superadmin/schools/${editSchool.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: editForm.name, address: editForm.address, type: editForm.type }),
+      });
+      const adminBody = {
+        firstName: editForm.firstName,
+        middleName: editForm.middleName,
+        lastName: editForm.lastName,
+        email: editForm.email,
+        phone: editForm.phone,
+      };
+      const adminStarted = Object.values(adminBody).some((value) => value.trim());
+      if (editForm.adminId) {
+        await api(`/api/v1/superadmin/schools/${editSchool.id}/admins/${editForm.adminId}`, {
+          method: "PATCH",
+          body: JSON.stringify(adminBody),
+        });
+        setMessage(`${editForm.name} updated.`);
+      } else if (adminStarted) {
+        const invited = await api<{ setPasswordPath: string; email: string }>(`/api/v1/superadmin/schools/${editSchool.id}/admins`, {
+          method: "POST",
+          body: JSON.stringify(adminBody),
+        });
+        setInviteLink({ email: invited.email, url: `${window.location.origin}${invited.setPasswordPath}` });
+        setMessage(`${editForm.name} updated.`);
+      } else {
+        setMessage(`${editForm.name} updated.`);
+      }
+      setEditSchool(null);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update school.");
     }
   }
 
@@ -645,45 +720,53 @@ export function SuperAdminHome() {
             <option value="INACTIVE">Inactive</option>
           </select>
         </div>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="text-[11px] uppercase tracking-wide text-slate-400">
-              <tr className="border-b border-slate-100">
-                {["School", "Type", "Students", "Teachers", "Staff", "Alumni", "Fees", "Status", "Actions"].map((heading) => <th key={heading} className="px-3 py-3 font-semibold">{heading}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {visibleSchools.map((school) => (
-                <tr key={school.id} className="border-b border-slate-100">
-                  <td className="px-3 py-3 font-semibold text-slate-900">{school.name}</td>
-                  <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${typeTone(school.type)}`}>{typeLabel(school.type)}</span></td>
-                  <td className="px-3 py-3 text-slate-700">{school.activeEnrollments}</td>
-                  <td className="px-3 py-3 text-slate-700">{school.teachers}</td>
-                  <td className="px-3 py-3 text-slate-700">{school.staff}</td>
-                  <td className="px-3 py-3 font-semibold text-emerald-700">{school.alumni}</td>
-                  <td className="px-3 py-3"><span className="block font-semibold text-slate-900">{school.feesCollected.toLocaleString()}</span><span className="text-xs text-rose-600">{school.feesOutstanding ? `${school.feesOutstanding.toLocaleString()} outstanding` : "Paid up"}</span></td>
-                  <td className="px-3 py-3"><span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${school.isActive ? "text-emerald-600" : "text-slate-500"}`}><span className={`h-1.5 w-1.5 rounded-full ${school.isActive ? "bg-emerald-500" : "bg-slate-400"}`} />{school.isActive ? "Active" : "Inactive"}</span></td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-1">
-                      {school.isActive ? (
-                        <button type="button" className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50" onClick={() => {
-                          setError("");
-                          api(`/api/v1/superadmin/schools/${school.id}/enter`, { method: "POST" })
-                            .then(() => { window.location.assign("/school/dashboard"); })
-                            .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not enter school."));
-                        }}>View school</button>
-                      ) : null}
-                      <button type="button" title="Assign school admin" className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-blue-600 hover:bg-blue-50" onClick={() => { setAdminForm((current) => ({ ...current, schoolId: school.id })); setAssignAdminOpen(true); }}><UserPlus className="h-4 w-4" /></button>
-                      <button type="button" title={school.isActive ? "Deactivate school" : "Activate school"} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" onClick={() => setConfirmSchool(school)}><MoreVertical className="h-4 w-4" /></button>
-                      <button type="button" title="Delete school" className="grid h-8 w-8 place-items-center rounded-lg border border-rose-100 text-rose-500 hover:bg-rose-50" onClick={() => { setDeletePhrase(""); setDeleteSchool(school); }}><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!visibleSchools.length ? <p className="py-10 text-center text-sm text-slate-500">No schools match these filters.</p> : null}
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
+          {visibleSchools.map((school) => {
+            const adminName = school.admin ? `${school.admin.firstName} ${school.admin.lastName}`.trim() : "";
+            return (
+              <article key={school.id} className="flex flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_16px_40px_-32px_rgba(15,23,42,0.55)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h4 className="truncate text-lg font-semibold tracking-tight text-slate-950">{school.name}</h4>
+                    <p className="mt-1 text-sm text-slate-500">{school.address || "No address yet"}</p>
+                  </div>
+                  <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${school.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                    <span className={`h-1.5 w-1.5 rounded-full ${school.isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
+                    {school.isActive ? "Active" : "Inactive"}
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${typeTone(school.type)}`}>{typeLabel(school.type)}</span>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 px-2 py-3 text-center">
+                  <div><p className="text-lg font-semibold text-slate-950">{school.activeEnrollments}</p><p className="text-[11px] text-slate-500">Students</p></div>
+                  <div><p className="text-lg font-semibold text-slate-950">{school.teachers}</p><p className="text-[11px] text-slate-500">Teachers</p></div>
+                  <div><p className="text-lg font-semibold text-slate-950">{school.staff}</p><p className="text-[11px] text-slate-500">Staff</p></div>
+                </div>
+                <div className="mt-4 rounded-2xl border border-slate-100 px-3 py-3">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">School admin</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{adminName || "Not assigned yet"}</p>
+                  <p className="truncate text-sm text-slate-500">{school.admin?.email || "No email"}</p>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button type="button" className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white" onClick={() => openEdit(school)}><Pencil className="h-3.5 w-3.5" /> Edit</button>
+                  {school.isActive ? (
+                    <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" onClick={() => {
+                      setError("");
+                      api(`/api/v1/superadmin/schools/${school.id}/enter`, { method: "POST" })
+                        .then(() => { window.location.assign("/school/dashboard"); })
+                        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not enter school."));
+                    }}>View</button>
+                  ) : null}
+                  <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" onClick={() => { setAdminForm((current) => ({ ...current, schoolId: school.id, firstName: "", middleName: "", lastName: "", email: "", phone: "" })); setAssignAdminOpen(true); }}>Assign</button>
+                  <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" onClick={() => setConfirmSchool(school)}>{school.isActive ? "Deactivate" : "Activate"}</button>
+                  <button type="button" className="rounded-xl border border-rose-100 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50" onClick={() => { setDeletePhrase(""); setDeleteSchool(school); }}>Delete</button>
+                </div>
+              </article>
+            );
+          })}
         </div>
+        {!visibleSchools.length ? <p className="py-10 text-center text-sm text-slate-500">No schools match these filters.</p> : null}
       </section>
 
       {createSchoolOpen ? (
@@ -716,6 +799,46 @@ export function SuperAdminHome() {
             <div className="mt-6 flex justify-end gap-2">
               <button type="button" className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700" onClick={() => setCreateSchoolOpen(false)}>Cancel</button>
               <button className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500"><Check className="h-4 w-4" /> Create School</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {editSchool ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-[2px]">
+          <form className="my-6 w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl" onSubmit={saveEdit}>
+            <div className="flex items-start gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-xl bg-slate-100 text-slate-700"><Pencil className="h-5 w-5" /></div>
+              <div className="flex-1">
+                <h3 className="text-xl font-bold text-slate-950">Edit school</h3>
+                <p className="mt-1 text-sm text-slate-500">Change the school and its administrator.</p>
+              </div>
+              <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" onClick={() => setEditSchool(null)}><X className="h-5 w-5" /></button>
+            </div>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">School name
+                <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={editForm.name} onChange={(event) => setEditForm({ ...editForm, name: event.target.value })} required />
+              </label>
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Address
+                <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" placeholder="Optional" value={editForm.address} onChange={(event) => setEditForm({ ...editForm, address: event.target.value })} />
+              </label>
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">School level
+                <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-normal text-slate-800" value={editForm.type} onChange={(event) => setEditForm({ ...editForm, type: event.target.value })}>
+                  <option value="PRIMARY_AND_SECONDARY">Primary & Secondary</option>
+                  <option value="PRIMARY_ONLY">Primary only</option>
+                  <option value="SECONDARY_ONLY">Secondary only</option>
+                </select>
+              </label>
+              <p className="sm:col-span-2 pt-2 text-xs font-bold uppercase tracking-wide text-slate-400">School admin</p>
+              <label className="text-sm font-semibold text-slate-700">First name<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={editForm.firstName} onChange={(event) => setEditForm({ ...editForm, firstName: event.target.value })} required={Boolean(editForm.adminId)} /></label>
+              <label className="text-sm font-semibold text-slate-700">Middle name<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={editForm.middleName} onChange={(event) => setEditForm({ ...editForm, middleName: event.target.value })} required={Boolean(editForm.adminId)} /></label>
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Last name<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={editForm.lastName} onChange={(event) => setEditForm({ ...editForm, lastName: event.target.value })} required={Boolean(editForm.adminId)} /></label>
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Email<input type="email" className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} required={Boolean(editForm.adminId)} /></label>
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Phone number<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" placeholder="+252..." value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} required={Boolean(editForm.adminId)} /></label>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700" onClick={() => setEditSchool(null)}>Cancel</button>
+              <button className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white"><Check className="h-4 w-4" /> Save changes</button>
             </div>
           </form>
         </div>

@@ -21,7 +21,7 @@ dashboardRouter.get("/summary", requireAuth, requireRole("SUPER_ADMIN"), async (
     prisma.studentFee.groupBy({ by: ["schoolId"], _sum: { amount: true, paidAmount: true } }),
     prisma.transferRequest.count({ where: { status: { in: ["PENDING", "WAITING_FOR_SECTION"] } } }),
   ]);
-  const [schoolList, schoolRoles] = await Promise.all([prisma.school.findMany({
+  const [schoolList, schoolRoles, schoolAdmins] = await Promise.all([prisma.school.findMany({
     orderBy: { name: "asc" },
     select: {
       id: true,
@@ -46,7 +46,15 @@ dashboardRouter.get("/summary", requireAuth, requireRole("SUPER_ADMIN"), async (
     by: ["schoolId", "role"],
     where: { schoolId: { not: null } },
     _count: { _all: true },
+  }), prisma.user.findMany({
+    where: { role: "SCHOOL_ADMIN", schoolId: { not: null } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, schoolId: true, firstName: true, lastName: true, email: true, phone: true },
   })]);
+  const adminBySchool = new Map<string, (typeof schoolAdmins)[number]>();
+  for (const admin of schoolAdmins) {
+    if (admin.schoolId && !adminBySchool.has(admin.schoolId)) adminBySchool.set(admin.schoolId, admin);
+  }
   const roleCount = (schoolId: string, roles: string[]) =>
     schoolRoles
       .filter((row) => row.schoolId === schoolId && roles.includes(row.role))
@@ -91,6 +99,10 @@ dashboardRouter.get("/summary", requireAuth, requireRole("SUPER_ADMIN"), async (
       alumni: graduatesBySchool.get(school.id) ?? 0,
       feesCollected: feesBySchool.get(school.id)?.collected ?? 0,
       feesOutstanding: feesBySchool.get(school.id)?.outstanding ?? 0,
+      admin: (() => {
+        const admin = adminBySchool.get(school.id);
+        return admin ? { id: admin.id, firstName: admin.firstName, lastName: admin.lastName, email: admin.email, phone: admin.phone ?? "" } : null;
+      })(),
     })),
   });
 });
