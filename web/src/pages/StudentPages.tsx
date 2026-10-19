@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  ArrowLeft,
   ArrowLeftRight,
   BadgeCheck,
   BookOpen,
@@ -381,39 +382,37 @@ function listPages(current: number, total: number) {
   return items;
 }
 
-function FormSection({
+function FormCard({
+  icon,
   title,
   subtitle,
-  tone,
+  extra,
   children,
 }: {
+  icon: ReactNode;
   title: string;
   subtitle: string;
-  tone: "blue" | "green" | "violet" | "orange";
+  extra?: ReactNode;
   children: ReactNode;
 }) {
-  const tones = {
-    blue: "border-sky-200 bg-sky-50/70",
-    green: "border-emerald-200 bg-emerald-50/70",
-    violet: "border-violet-200 bg-violet-50/70",
-    orange: "border-orange-200 bg-orange-50/70",
-  };
-  const titles = {
-    blue: "text-sky-800",
-    green: "text-emerald-800",
-    violet: "text-violet-800",
-    orange: "text-orange-800",
-  };
   return (
-    <section className={`rounded-2xl border p-5 ${tones[tone]}`}>
-      <h2 className={`text-lg font-semibold ${titles[tone]}`}>{title}</h2>
-      <p className="mb-4 mt-1 text-sm text-slate-500">{subtitle}</p>
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 text-blue-600">{icon}</div>
+          <div>
+            <h2 className="font-semibold text-slate-900">{title}</h2>
+            <p className="text-sm text-slate-500">{subtitle}</p>
+          </div>
+        </div>
+        {extra}
+      </div>
       {children}
     </section>
   );
 }
 
-const fieldClass = "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-800";
+const inputClass = "mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-400";
 
 export function NewStudentPage() {
   const navigate = useNavigate();
@@ -425,12 +424,12 @@ export function NewStudentPage() {
     firstName: "",
     fatherName: "",
     grandfatherName: "",
-    gender: "MALE",
+    gender: "",
     dateOfBirth: "",
     phone: "",
     nationalId: "",
   });
-  const [parentMode, setParentMode] = useState<"skip" | "search" | "new">("skip");
+  const [parentMode, setParentMode] = useState<"skip" | "search" | "new">("search");
   const [guardianQuery, setGuardianQuery] = useState("");
   const [hits, setHits] = useState<GuardianHit[]>([]);
   const [guardianId, setGuardianId] = useState("");
@@ -450,6 +449,9 @@ export function NewStudentPage() {
     transferNo: "",
   });
   const [notes, setNotes] = useState("");
+  const [isTransfer, setIsTransfer] = useState(false);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -457,11 +459,7 @@ export function NewStudentPage() {
     api<Placement[]>("/api/v1/placement").then((years) => {
       setPlacement(years);
       const current = years[0];
-      if (current) {
-        setYearId(current.id);
-        setClassId(current.classes[0]?.id ?? "");
-        setSectionId(current.classes[0]?.sections[0]?.id ?? "");
-      }
+      if (current) setYearId(current.id);
     });
   }, []);
 
@@ -488,6 +486,10 @@ export function NewStudentPage() {
     setError("");
     try {
       let guardianPayload: Record<string, string> | null = null;
+      if (parentMode === "search" && !guardianId) {
+        setError("Choose a parent, or select Skip for now.");
+        return;
+      }
       if (parentMode === "search" && guardianId) {
         guardianPayload = { id: guardianId, relationship: guardian.relationship || "GUARDIAN" };
       } else if (parentMode === "new") {
@@ -497,176 +499,245 @@ export function NewStudentPage() {
         }
         guardianPayload = guardian;
       }
+      const localPhone = form.phone.trim();
+      const phone = localPhone ? (localPhone.startsWith("+") ? localPhone : `+252${localPhone.replace(/\s/g, "")}`) : "";
       const created = await api<{ id: string }>("/api/v1/students", {
         method: "POST",
         body: JSON.stringify({
           ...form,
+          phone,
           academicYearId: yearId,
           sectionId,
           guardian: guardianPayload,
-          previousSchoolId,
-          previousClass: previous.className,
-          leavingYear: previous.leavingYear,
-          transferCertificateNo: previous.transferNo,
+          previousSchoolId: isTransfer ? previousSchoolId : "",
+          previousClass: isTransfer ? previous.className : "",
+          leavingYear: isTransfer ? previous.leavingYear : "",
+          transferCertificateNo: isTransfer ? previous.transferNo : "",
           notes,
         }),
       });
+      if (photoFile) {
+        const body = new FormData();
+        body.append("file", photoFile);
+        const sessionKey = sessionStorage.getItem("emp_session") ?? "";
+        const uploaded = await fetch(`/api/v1/students/${created.id}/photo`, {
+          method: "POST",
+          credentials: "include",
+          headers: sessionKey ? { "X-Session-Key": sessionKey } : undefined,
+          body,
+        });
+        if (!uploaded.ok) {
+          navigate(`/school/students/${created.id}`);
+          return;
+        }
+      }
       navigate(`/school/students/${created.id}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not register the student.");
     }
   }
 
+  const parentLabel = guardian.relationship === "FATHER" ? "Father" : guardian.relationship === "MOTHER" ? "Mother" : "Guardian";
+  const parentInitials = `${guardian.firstName[0] ?? ""}${guardian.lastName[0] ?? ""}`.toUpperCase() || "P";
+
   return (
-    <form onSubmit={submit} className="mx-auto max-w-5xl space-y-5">
+    <form onSubmit={submit} className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900">Add New Student</h2>
-          <p className="mt-1 text-sm text-slate-500">Student ID and roll number are assigned when you save. Parent can be skipped.</p>
+          <p className="text-sm text-slate-400">Home <span className="px-1">›</span> Students <span className="px-1">›</span> Add New Student</p>
+          <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Add New Student</h2>
+          <p className="mt-1 text-sm text-slate-500">Enter student details and assign an academic placement. Student ID and roll number are assigned automatically.</p>
         </div>
-        <Link className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-medium text-sky-700" to="/school/students">
-          Back to Students
+        <Link className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-600 shadow-sm" to="/school/students">
+          <ArrowLeft className="h-4 w-4" /> Back to Students
         </Link>
       </div>
 
-      <FormSection title="Student Information" subtitle="Basic identity details for the student record." tone="blue">
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className="text-sm text-slate-600">First name *<input className={fieldClass} value={form.firstName} onChange={(event) => setField("firstName", event.target.value)} required /></label>
-          <label className="text-sm text-slate-600">Father's name *<input className={fieldClass} value={form.fatherName} onChange={(event) => setField("fatherName", event.target.value)} required /></label>
-          <label className="text-sm text-slate-600">Grandfather's name *<input className={fieldClass} value={form.grandfatherName} onChange={(event) => setField("grandfatherName", event.target.value)} required /></label>
-          <label className="text-sm text-slate-600">Gender *
-            <select className={fieldClass} value={form.gender} onChange={(event) => setField("gender", event.target.value)}>
+      <FormCard icon={<UserRound className="h-5 w-5" />} title="Student Information" subtitle="Basic identity details for the student record.">
+        <div className="grid gap-4 md:grid-cols-3">
+          <label className="text-sm font-medium text-slate-700">First Name <span className="text-rose-500">*</span>
+            <input className={inputClass} placeholder="Enter first name" value={form.firstName} onChange={(event) => setField("firstName", event.target.value)} required />
+          </label>
+          <label className="text-sm font-medium text-slate-700">Father's Name <span className="text-rose-500">*</span>
+            <input className={inputClass} placeholder="Enter father's name" value={form.fatherName} onChange={(event) => setField("fatherName", event.target.value)} required />
+          </label>
+          <label className="text-sm font-medium text-slate-700">Grandfather's Name <span className="text-rose-500">*</span>
+            <input className={inputClass} placeholder="Enter grandfather's name" value={form.grandfatherName} onChange={(event) => setField("grandfatherName", event.target.value)} required />
+          </label>
+          <label className="text-sm font-medium text-slate-700">Gender <span className="text-rose-500">*</span>
+            <select className={inputClass} value={form.gender} onChange={(event) => setField("gender", event.target.value)} required>
+              <option value="">Select gender</option>
               <option value="MALE">Male</option>
               <option value="FEMALE">Female</option>
             </select>
           </label>
-          <label className="text-sm text-slate-600">Date of birth *<input className={fieldClass} type="date" value={form.dateOfBirth} onChange={(event) => setField("dateOfBirth", event.target.value)} required /></label>
-          <label className="text-sm text-slate-600">NIRA (optional)<input className={fieldClass} value={form.nationalId} onChange={(event) => setField("nationalId", event.target.value)} placeholder="Leave empty if you do not have it" /></label>
-          <label className="text-sm text-slate-600 md:col-span-2">Phone (optional)<input className={fieldClass} value={form.phone} onChange={(event) => setField("phone", event.target.value)} /></label>
+          <label className="text-sm font-medium text-slate-700">Date of birth <span className="text-rose-500">*</span>
+            <input className={inputClass} type="date" value={form.dateOfBirth} onChange={(event) => setField("dateOfBirth", event.target.value)} required />
+          </label>
+          <label className="text-sm font-medium text-slate-700">NIRA (optional)
+            <input className={inputClass} placeholder="Enter NIRA number" value={form.nationalId} onChange={(event) => setField("nationalId", event.target.value)} />
+          </label>
+          <label className="text-sm font-medium text-slate-700 md:col-span-2">Phone Number (optional)
+            <span className="mt-1.5 flex overflow-hidden rounded-xl border border-slate-200 focus-within:border-blue-400">
+              <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">+252</span>
+              <input className="w-full bg-white px-3 py-2.5 text-sm text-slate-800 outline-none" placeholder="Enter phone number" value={form.phone} onChange={(event) => setField("phone", event.target.value)} />
+            </span>
+          </label>
+          <div className="text-sm font-medium text-slate-700">Profile Photo (optional)
+            <div className="mt-1.5 flex items-center justify-between gap-3 rounded-xl border border-dashed border-blue-200 bg-blue-50/40 px-3 py-3">
+              {photoPreviewUrl ? <img src={photoPreviewUrl} alt="" className="h-12 w-12 rounded-full object-cover" /> : <span className="grid h-12 w-12 place-items-center rounded-full bg-white text-slate-400"><UserRound className="h-5 w-5" /></span>}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-slate-800">Upload student photo</p>
+                <p className="text-xs font-normal text-slate-400">JPG, PNG (Max 2MB)</p>
+              </div>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">
+                <Upload className="h-3.5 w-3.5" /> Choose File
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  if (photoPreviewUrl) URL.revokeObjectURL(photoPreviewUrl);
+                  setPhotoFile(file);
+                  setPhotoPreviewUrl(file ? URL.createObjectURL(file) : "");
+                }} />
+              </label>
+            </div>
+          </div>
         </div>
-      </FormSection>
+      </FormCard>
 
-      <FormSection title="Academic Placement" subtitle="Place the student in the selected academic year." tone="green">
-        <div className="grid gap-3 md:grid-cols-3">
-          <label className="text-sm text-slate-600">Academic year *
-            <select className={fieldClass} value={yearId} onChange={(event) => {
-              const next = placement.find((item) => item.id === event.target.value);
-              setYearId(event.target.value);
-              setClassId(next?.classes[0]?.id ?? "");
-              setSectionId(next?.classes[0]?.sections[0]?.id ?? "");
-            }}>
+      <FormCard icon={<GraduationCap className="h-5 w-5" />} title="Academic Placement" subtitle="Place the student in the selected academic year.">
+        <div className="grid gap-4 md:grid-cols-3">
+          <label className="text-sm font-medium text-slate-700">Academic Year <span className="text-rose-500">*</span>
+            <select className={inputClass} value={yearId} onChange={(event) => { setYearId(event.target.value); setClassId(""); setSectionId(""); }}>
               {placement.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
-          <label className="text-sm text-slate-600">Class / Form *
-            <select className={fieldClass} value={classId} onChange={(event) => {
-              const next = year?.classes.find((item) => item.id === event.target.value);
-              setClassId(event.target.value);
-              setSectionId(next?.sections[0]?.id ?? "");
-            }}>
+          <label className="text-sm font-medium text-slate-700">Class / Form <span className="text-rose-500">*</span>
+            <select className={inputClass} value={classId} onChange={(event) => { setClassId(event.target.value); setSectionId(""); }} required>
+              <option value="">Select class</option>
               {year?.classes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
           </label>
-          <label className="text-sm text-slate-600">Section *
-            <select className={fieldClass} value={sectionId} onChange={(event) => setSectionId(event.target.value)} required>
+          <label className="text-sm font-medium text-slate-700">Section <span className="text-rose-500">*</span>
+            <select className={inputClass} value={sectionId} onChange={(event) => setSectionId(event.target.value)} required>
+              <option value="">Select section</option>
               {classGroup?.sections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
         </div>
-      </FormSection>
+      </FormCard>
 
-      <FormSection title="Parent / Guardian Information" subtitle="Optional — you can skip and add a parent later." tone="violet">
-        <div className="mb-4 flex flex-wrap gap-2">
-          <button type="button" className={`rounded-xl px-4 py-2 text-sm font-medium ${parentMode === "skip" ? "bg-violet-600 text-white" : "border border-violet-200 bg-white text-violet-700"}`} onClick={() => { setParentMode("skip"); setGuardianId(""); }}>
-            Skip for now
-          </button>
-          <button type="button" className={`rounded-xl px-4 py-2 text-sm font-medium ${parentMode === "search" ? "bg-violet-600 text-white" : "border border-violet-200 bg-white text-violet-700"}`} onClick={() => setParentMode("search")}>
-            Search existing parent
-          </button>
-          <button type="button" className={`rounded-xl px-4 py-2 text-sm font-medium ${parentMode === "new" ? "bg-violet-600 text-white" : "border border-violet-200 bg-white text-violet-700"}`} onClick={() => { setParentMode("new"); setGuardianId(""); }}>
-            Add new parent
-          </button>
+      <FormCard icon={<Users className="h-5 w-5" />} title="Parent / Guardian Information" subtitle="Link an existing parent or add a new parent. You can also skip this for now.">
+        <div className="grid gap-3 md:grid-cols-3">
+          {([
+            ["search", "Link Existing Parent", "Search and link an existing parent", <Search className="h-4 w-4" />],
+            ["new", "Add New Parent", "Create a new parent account", <Plus className="h-4 w-4" />],
+            ["skip", "Skip for Now", "Add parent later", <X className="h-4 w-4" />],
+          ] as const).map(([mode, title, caption, icon]) => (
+            <button key={mode} type="button" className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left ${parentMode === mode ? "border-blue-400 bg-blue-50" : "border-slate-200 bg-white"}`} onClick={() => { setParentMode(mode); if (mode !== "search") setGuardianId(""); }}>
+              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full ${parentMode === mode ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"}`}>{icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-slate-900">{title}</span>
+                <span className="block text-xs text-slate-500">{caption}</span>
+              </span>
+              <span className={`grid h-4 w-4 place-items-center rounded-full border ${parentMode === mode ? "border-blue-600" : "border-slate-300"}`}>{parentMode === mode ? <span className="h-2 w-2 rounded-full bg-blue-600" /> : null}</span>
+            </button>
+          ))}
         </div>
-        {parentMode === "skip" ? (
-          <p className="rounded-xl border border-dashed border-violet-200 bg-white px-4 py-3 text-sm text-slate-500">
-            Parent will not be linked. You can attach one from the student profile later.
-          </p>
-        ) : null}
+        {parentMode === "skip" ? <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Parent will not be linked. You can attach one from the student profile later.</p> : null}
         {parentMode === "search" ? (
-          <div className="space-y-3">
-            <input className={fieldClass} placeholder="Search by name, phone, or email" value={guardianQuery} onChange={(event) => { setGuardianQuery(event.target.value); setGuardianId(""); }} />
-            {hits.map((hit) => (
-              <button
-                type="button"
-                key={hit.id}
-                className={`block w-full rounded-xl border px-4 py-3 text-left text-sm ${guardianId === hit.id ? "border-violet-500 bg-violet-50" : "border-slate-200 bg-white"}`}
-                onClick={() => { setGuardianId(hit.id); setGuardianQuery(`${hit.firstName} ${hit.lastName}`); setGuardian((current) => ({ ...current, firstName: hit.firstName, lastName: hit.lastName, phone: hit.phone, email: hit.email ?? "" })); }}
-              >
-                {hit.publicId} · {hit.firstName} {hit.lastName} · {hit.phone}
-              </button>
-            ))}
+          <div className="mt-4 space-y-3">
+            <label className="text-sm font-medium text-slate-700">Search Parent <span className="text-rose-500">*</span>
+              <input className={inputClass} placeholder="Search by parent name, phone number or email..." value={guardianQuery} onChange={(event) => { setGuardianQuery(event.target.value); setGuardianId(""); }} />
+            </label>
+            {hits.length ? (
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                {hits.map((hit) => (
+                  <button type="button" key={hit.id} className="block w-full border-b border-slate-100 px-4 py-3 text-left text-sm last:border-0 hover:bg-slate-50" onClick={() => { setGuardianId(hit.id); setGuardian((current) => ({ ...current, firstName: hit.firstName, lastName: hit.lastName, phone: hit.phone, email: hit.email ?? "" })); }}>
+                    <span className="font-semibold text-slate-900">{hit.firstName} {hit.lastName}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">{hit.publicId} · {hit.phone}{hit.email ? ` · ${hit.email}` : ""}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             {guardianId ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="text-sm text-slate-600">Name<input className={fieldClass} value={`${guardian.firstName} ${guardian.lastName}`} readOnly /></label>
-                <label className="text-sm text-slate-600">Relationship
-                  <select className={fieldClass} value={guardian.relationship} onChange={(event) => setGuardian({ ...guardian, relationship: event.target.value })}>
-                    <option value="FATHER">Father</option>
-                    <option value="MOTHER">Mother</option>
-                    <option value="GUARDIAN">Guardian / Masuul</option>
-                  </select>
-                </label>
-                <label className="text-sm text-slate-600">Phone<input className={fieldClass} value={guardian.phone} readOnly /></label>
-                <label className="text-sm text-slate-600">Email<input className={fieldClass} value={guardian.email} readOnly /></label>
+              <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3">
+                <span className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 text-sm font-semibold text-white">{parentInitials}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-900">{guardian.firstName} {guardian.lastName}</p>
+                  <p className="text-sm text-slate-500">{[guardian.phone, guardian.email].filter(Boolean).join(" · ") || "No contact yet"}</p>
+                </div>
+                <select className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700" value={guardian.relationship} onChange={(event) => setGuardian({ ...guardian, relationship: event.target.value })}>
+                  <option value="FATHER">Father</option>
+                  <option value="MOTHER">Mother</option>
+                  <option value="GUARDIAN">Guardian</option>
+                </select>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">{parentLabel}</span>
+                <button type="button" className="text-sm font-semibold text-blue-600" onClick={() => { setGuardianId(""); setGuardianQuery(""); }}>Change</button>
               </div>
             ) : null}
           </div>
         ) : null}
         {parentMode === "new" ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="text-sm text-slate-600">First name<input className={fieldClass} value={guardian.firstName} onChange={(event) => setGuardian({ ...guardian, firstName: event.target.value })} /></label>
-            <label className="text-sm text-slate-600">Last name<input className={fieldClass} value={guardian.lastName} onChange={(event) => setGuardian({ ...guardian, lastName: event.target.value })} /></label>
-            <label className="text-sm text-slate-600">Phone (optional)<input className={fieldClass} value={guardian.phone} onChange={(event) => setGuardian({ ...guardian, phone: event.target.value })} /></label>
-            <label className="text-sm text-slate-600">Email<input className={fieldClass} value={guardian.email} onChange={(event) => setGuardian({ ...guardian, email: event.target.value })} /></label>
-            <label className="text-sm text-slate-600">Relationship
-              <select className={fieldClass} value={guardian.relationship} onChange={(event) => setGuardian({ ...guardian, relationship: event.target.value })}>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="text-sm font-medium text-slate-700">First name<input className={inputClass} value={guardian.firstName} onChange={(event) => setGuardian({ ...guardian, firstName: event.target.value })} /></label>
+            <label className="text-sm font-medium text-slate-700">Last name<input className={inputClass} value={guardian.lastName} onChange={(event) => setGuardian({ ...guardian, lastName: event.target.value })} /></label>
+            <label className="text-sm font-medium text-slate-700">Phone (optional)<input className={inputClass} value={guardian.phone} onChange={(event) => setGuardian({ ...guardian, phone: event.target.value })} /></label>
+            <label className="text-sm font-medium text-slate-700">Email<input className={inputClass} value={guardian.email} onChange={(event) => setGuardian({ ...guardian, email: event.target.value })} /></label>
+            <label className="text-sm font-medium text-slate-700">Relationship
+              <select className={inputClass} value={guardian.relationship} onChange={(event) => setGuardian({ ...guardian, relationship: event.target.value })}>
                 <option value="FATHER">Father</option>
                 <option value="MOTHER">Mother</option>
-                <option value="GUARDIAN">Guardian / Masuul</option>
+                <option value="GUARDIAN">Guardian</option>
               </select>
             </label>
-            <label className="text-sm text-slate-600">NIRA (optional)<input className={fieldClass} value={guardian.nationalId} onChange={(event) => setGuardian({ ...guardian, nationalId: event.target.value })} placeholder="Leave empty if you do not have it" /></label>
+            <label className="text-sm font-medium text-slate-700">NIRA (optional)<input className={inputClass} placeholder="Leave empty if you do not have it" value={guardian.nationalId} onChange={(event) => setGuardian({ ...guardian, nationalId: event.target.value })} /></label>
           </div>
         ) : null}
-      </FormSection>
+      </FormCard>
 
-      <FormSection title="Previous School" subtitle="Optional. Choose a school the student attended or transferred from. The extra fields appear after you select one." tone="orange">
-        <label className="text-sm text-slate-600">School
-          <select className={fieldClass} value={previousSchoolId} onChange={(event) => {
-            setPreviousSchoolId(event.target.value);
-            if (!event.target.value) setPrevious({ className: "", leavingYear: "", transferNo: "" });
+      <FormCard
+        icon={<BookOpen className="h-5 w-5" />}
+        title="Previous School (Optional)"
+        subtitle="Fill this information if the student is transferring from another school."
+        extra={(
+          <button type="button" className="inline-flex items-center gap-2 text-sm font-medium text-slate-600" onClick={() => {
+            setIsTransfer((current) => !current);
+            setPreviousSchoolId("");
+            setPrevious({ className: "", leavingYear: "", transferNo: "" });
           }}>
-            <option value="">No previous school</option>
-            {previousSchools.map((school) => <option key={school.id} value={school.id}>{school.name} · {school.code}</option>)}
-          </select>
-        </label>
-        {previousSchoolId ? (
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            <label className="text-sm text-slate-600">Previous class / form (optional)<input className={fieldClass} value={previous.className} onChange={(event) => setPrevious({ ...previous, className: event.target.value })} /></label>
-            <label className="text-sm text-slate-600">Leaving year (optional)<input className={fieldClass} value={previous.leavingYear} onChange={(event) => setPrevious({ ...previous, leavingYear: event.target.value })} /></label>
-            <label className="text-sm text-slate-600">Transfer certificate no. (optional)<input className={fieldClass} value={previous.transferNo} onChange={(event) => setPrevious({ ...previous, transferNo: event.target.value })} /></label>
+            <span className={`relative h-6 w-11 rounded-full ${isTransfer ? "bg-blue-600" : "bg-slate-200"}`}><span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ${isTransfer ? "left-5" : "left-0.5"}`} /></span>
+            This is a transfer student
+          </button>
+        )}
+      >
+        {isTransfer ? (
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="text-sm font-medium text-slate-700">Previous School Name
+              <select className={inputClass} value={previousSchoolId} onChange={(event) => setPreviousSchoolId(event.target.value)}>
+                <option value="">Select previous school</option>
+                {previousSchools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-700">Last Class / Form
+              <input className={inputClass} placeholder="Enter last class" value={previous.className} onChange={(event) => setPrevious({ ...previous, className: event.target.value })} />
+            </label>
+            <label className="text-sm font-medium text-slate-700">Leaving year
+              <input className={inputClass} placeholder="Enter leaving year" value={previous.leavingYear} onChange={(event) => setPrevious({ ...previous, leavingYear: event.target.value })} />
+            </label>
+            <label className="text-sm font-medium text-slate-700 md:col-span-2">Transfer certificate no.
+              <input className={inputClass} placeholder="Optional" value={previous.transferNo} onChange={(event) => setPrevious({ ...previous, transferNo: event.target.value })} />
+            </label>
           </div>
-        ) : null}
-      </FormSection>
-
-      <FormSection title="Additional Notes" subtitle="Optional notes for school staff." tone="violet">
-        <textarea className={`${fieldClass} min-h-28`} maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Additional notes..." />
-        <p className="mt-2 text-right text-xs text-slate-400">{notes.length}/500</p>
-      </FormSection>
+        ) : <p className="text-sm text-slate-400">Turn this on only when the student is coming from another school.</p>}
+        <label className="mt-4 block text-sm font-medium text-slate-700">Notes (optional)
+          <textarea className={`${inputClass} min-h-20`} maxLength={500} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Additional notes..." />
+        </label>
+      </FormCard>
 
       {error ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-rose-700">{error}</p> : null}
-      <div className="flex justify-end gap-3">
-        <Link className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700" to="/school/students">Cancel</Link>
-        <button className="rounded-xl bg-sky-600 px-5 py-2.5 font-semibold text-white hover:bg-sky-500">Register student</button>
+      <div className="flex items-center justify-between gap-3">
+        <Link className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700" to="/school/students">Cancel</Link>
+        <button className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">Create Student</button>
       </div>
     </form>
   );
