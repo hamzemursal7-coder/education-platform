@@ -24,23 +24,44 @@ const setPasswordSchema = z.object({
   password: z.string().min(8),
 });
 
+async function openInvite(token: string) {
+  const invite = await prisma.inviteToken.findUnique({ where: { tokenHash: hashRefreshToken(token) } });
+  if (!invite || invite.usedAt || invite.expiresAt < new Date()) return null;
+  return invite;
+}
+
+authRouter.post("/set-password/check", async (req, res, next) => {
+  try {
+    const token = z.string().min(20).safeParse(req.body?.token);
+    if (!token.success || !(await openInvite(token.data))) throw new HttpError(400, "This link is no longer valid.");
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 authRouter.post("/set-password", async (req, res, next) => {
   try {
     const body = setPasswordSchema.safeParse(req.body);
     if (!body.success) throw new HttpError(400, "A valid link and a password of at least 8 characters are required.");
-    const tokenHash = hashRefreshToken(body.data.token);
-    const invite = await prisma.inviteToken.findUnique({ where: { tokenHash }, include: { user: true } });
-    if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
-      throw new HttpError(400, "This link is no longer valid.");
-    }
+    const invite = await openInvite(body.data.token);
+    if (!invite) throw new HttpError(400, "This link is no longer valid.");
     const passwordHash = await hashPassword(body.data.password);
-    await prisma.$transaction([
-      prisma.user.update({
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.inviteToken.updateMany({
+        where: { id: invite.id, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      if (claimed.count !== 1) throw new HttpError(400, "This link is no longer valid.");
+      await tx.inviteToken.updateMany({
+        where: { userId: invite.userId, usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      await tx.user.update({
         where: { id: invite.userId },
         data: { passwordHash, status: "ACTIVE" },
-      }),
-      prisma.inviteToken.update({ where: { id: invite.id }, data: { usedAt: new Date() } }),
-    ]);
+      });
+    });
     res.json({ ok: true });
   } catch (error) {
     next(error);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { ArrowLeft, BadgeCheck, BarChart3, BookOpen, CalendarDays, ChevronRight, Eye, Filter, IdCard, Mail, Megaphone, Pencil, Phone, Plus, Receipt, School, Search, Send, UserRound, Users, Wallet } from "lucide-react";
 import { api } from "../lib/api";
+import { PasswordLinkDialog, passwordLinkUrl } from "../components/PasswordLinkDialog";
 import { Avatar, DataTable } from "../components/PeopleList";
 
 type ParentRow = {
@@ -27,6 +28,7 @@ export function SchoolParentsPage() {
   const [rows, setRows] = useState<ParentRow[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [passwordLink, setPasswordLink] = useState<{ url: string; email?: string } | null>(null);
   const [q, setQ] = useState("");
   const [portal, setPortal] = useState("ALL");
   const [showAdd, setShowAdd] = useState(false);
@@ -60,7 +62,7 @@ export function SchoolParentsPage() {
         method: "POST",
         body: JSON.stringify({ email }),
       });
-      setMessage(`Invite link: ${invited.setPasswordPath}`);
+      setPasswordLink({ url: passwordLinkUrl(invited.setPasswordPath), email });
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not invite parent.");
@@ -135,6 +137,7 @@ export function SchoolParentsPage() {
       </div>
       {error ? <p className="text-red-600">{error}</p> : null}
       {message ? <p className="text-blue-600">{message}</p> : null}
+      {passwordLink ? <PasswordLinkDialog url={passwordLink.url} email={passwordLink.email} onClose={() => setPasswordLink(null)} /> : null}
       <DataTable
         headers={["Profile", "Parent ID", "Parent / Guardian", "Contact Information", "Children", "Portal Status", "Actions"]}
         empty={filtered.length === 0 ? "No parents match these filters." : undefined}
@@ -261,6 +264,7 @@ export function SchoolParentProfilePage() {
   const [profile, setProfile] = useState<ParentProfile | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [passwordLink, setPasswordLink] = useState<{ url: string; email?: string } | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", email: "", nationalId: "" });
@@ -328,7 +332,7 @@ export function SchoolParentProfilePage() {
             const path = profile.portalStatus === "NONE"
               ? api<{ setPasswordPath: string }>(`/api/v1/guardians/${profile.id}/invite`, { method: "POST", body: JSON.stringify({ email: profile.email || window.prompt("Parent email for portal invite:") || "" }) })
               : api<{ setPasswordPath: string }>(`/api/v1/parents/${profile.id}/access`, { method: "POST" });
-            path.then((result) => { setMessage(`${profile.portalStatus === "ACTIVE" ? "Reset" : "Invite"} link: ${result.setPasswordPath}`); return load(); })
+            path.then((result) => { setPasswordLink({ url: passwordLinkUrl(result.setPasswordPath), email: profile.email || undefined }); return load(); })
               .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update login access."));
           }}>
             {profile.portalStatus === "ACTIVE" ? "Reset password" : "Invite login"}
@@ -432,6 +436,7 @@ export function SchoolParentProfilePage() {
       </div>
 
       {message ? <p className="text-blue-600">{message}</p> : null}
+      {passwordLink ? <PasswordLinkDialog url={passwordLink.url} email={passwordLink.email} onClose={() => setPasswordLink(null)} /> : null}
       {error ? <p className="text-red-600">{error}</p> : null}
 
       {editing ? (

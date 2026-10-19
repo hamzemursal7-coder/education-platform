@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { api, type SessionUser } from "../lib/api";
+import { PasswordLinkDialog } from "../components/PasswordLinkDialog";
 
 const labels: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
@@ -936,19 +937,7 @@ export function SuperAdminHome() {
         </div>
       ) : null}
 
-      {inviteLink ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-900">Share the password link</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Send this link to {inviteLink.email}. They open it and choose a new password.</p>
-            <p className="mt-4 break-all rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-800">{inviteLink.url}</p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700" onClick={() => setInviteLink(null)}>Close</button>
-              <button type="button" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white" onClick={() => { void navigator.clipboard.writeText(inviteLink.url); setMessage("Password link copied."); }}>Copy link</button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {inviteLink ? <PasswordLinkDialog email={inviteLink.email} url={inviteLink.url} onClose={() => setInviteLink(null)} /> : null}
 
       {message ? <p className="fixed right-5 top-5 z-[60] max-w-md rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{message}</p> : null}
       {error ? <p className="fixed right-5 top-5 z-[60] max-w-md rounded-xl bg-rose-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{error}</p> : null}

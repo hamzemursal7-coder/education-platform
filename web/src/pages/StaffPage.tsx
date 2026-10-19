@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../lib/api";
+import { PasswordLinkDialog, passwordLinkUrl } from "../components/PasswordLinkDialog";
 
 type StaffRow = {
   id: string;
@@ -25,6 +26,7 @@ export function StaffPage() {
     role: "ACCOUNTANT",
   });
   const [invitePath, setInvitePath] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
   const [error, setError] = useState("");
 
   async function load() {
@@ -43,7 +45,8 @@ export function StaffPage() {
         method: "POST",
         body: JSON.stringify(form),
       });
-      setInvitePath(`${created.publicId} · ${created.setPasswordPath}`);
+      setInvitePath(passwordLinkUrl(created.setPasswordPath));
+      setInviteEmail(form.email);
       setForm({ firstName: "", lastName: "", email: "", phone: "", designation: "Accountant", role: "ACCOUNTANT" });
       await load();
     } catch (caught) {
@@ -74,11 +77,7 @@ export function StaffPage() {
         </select>
         <button className="rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 md:col-span-3">Add staff</button>
       </form>
-      {invitePath ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-4 text-slate-800 shadow-sm">
-          Invite created: {invitePath}
-        </p>
-      ) : null}
+      {invitePath ? <PasswordLinkDialog email={inviteEmail} url={invitePath} onClose={() => setInvitePath("")} /> : null}
       {rows.map((row) => (
         <article key={row.id} className="rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
           <p className="font-semibold"><Link className="text-blue-700" to={`/school/staff/${row.id}`}>{row.name}</Link> · {row.publicId}</p>
@@ -104,6 +103,7 @@ export function StaffProfilePage() {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", designation: "" });
   const [message, setMessage] = useState("");
+  const [passwordLink, setPasswordLink] = useState("");
   const [error, setError] = useState("");
 
   async function load() {
@@ -130,7 +130,7 @@ export function StaffProfilePage() {
           <button type="button" className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white" onClick={() => setEditing(true)}>Edit</button>
           <button type="button" className="rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700" onClick={() => {
             api<{ setPasswordPath: string }>(`/api/v1/staff/${staffId}/access`, { method: "POST" })
-              .then((result) => setMessage(`${profile.hasLogin ? "Reset" : "Invite"} link: ${result.setPasswordPath}`))
+              .then((result) => setPasswordLink(passwordLinkUrl(result.setPasswordPath)))
               .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update login access."));
           }}>{profile.hasLogin ? "Reset password" : "Invite login"}</button>
         </div>
@@ -140,6 +140,7 @@ export function StaffProfilePage() {
         <p className="mt-1">{profile.role} · {profile.status}</p>
       </article>
       {message ? <p className="text-blue-700">{message}</p> : null}
+      {passwordLink ? <PasswordLinkDialog url={passwordLink} onClose={() => setPasswordLink("")} /> : null}
       {error ? <p className="text-red-600">{error}</p> : null}
       {editing ? (
         <form className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 md:grid-cols-2" onSubmit={(event) => {

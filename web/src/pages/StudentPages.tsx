@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "../lib/api";
+import { PasswordLinkDialog, passwordLinkUrl } from "../components/PasswordLinkDialog";
 import { Avatar, DataTable, FeeBadge, initials, avatarTone } from "../components/PeopleList";
 
 type TermSnapshot = {
@@ -788,6 +789,7 @@ export function StudentProfilePage() {
   const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [passwordLink, setPasswordLink] = useState<{ url: string; email?: string } | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [placementSection, setPlacementSection] = useState("");
   const [moveOpen, setMoveOpen] = useState(false);
@@ -972,7 +974,7 @@ export function StudentProfilePage() {
               const email = profile.hasLogin ? undefined : window.prompt("Student email for portal invite:") || undefined;
               if (!profile.hasLogin && profile.portalStatus === "NONE" && !email) return;
               api<{ setPasswordPath: string }>(`/api/v1/students/${studentId}/access`, { method: "POST", body: JSON.stringify({ email }) })
-                .then((result) => setMessage(`${profile.hasLogin ? "Reset" : "Invite"} link: ${result.setPasswordPath}`))
+                .then((result) => setPasswordLink({ url: passwordLinkUrl(result.setPasswordPath), email }))
                 .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update login access."));
             }}>{profile.hasLogin ? "Reset password" : "Invite login"}</button>
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-500">
@@ -1274,7 +1276,7 @@ export function StudentProfilePage() {
                             method: "POST",
                             body: JSON.stringify({ email }),
                           });
-                          setMessage(`Parent invite link: ${invited.setPasswordPath}`);
+                          setPasswordLink({ url: passwordLinkUrl(invited.setPasswordPath), email });
                           await loadProfile();
                         } catch (caught) {
                           setError(caught instanceof Error ? caught.message : "Could not invite the parent.");
@@ -1383,6 +1385,7 @@ export function StudentProfilePage() {
       ) : null}
       {message ? <p className="text-blue-600">{message}</p> : null}
       {error ? <p className="text-red-600">{error}</p> : null}
+      {passwordLink ? <PasswordLinkDialog url={passwordLink.url} email={passwordLink.email} onClose={() => setPasswordLink(null)} /> : null}
 
       <div className="flex flex-wrap gap-2">
         {tabs.map((item) => (

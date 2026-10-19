@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, BookOpen, Check, GraduationCap, Mail, Pencil, Phone, Plus, Trash2, UserCheck, UserRound, UsersRound } from "lucide-react";
 import { api } from "../lib/api";
+import { PasswordLinkDialog, passwordLinkUrl } from "../components/PasswordLinkDialog";
 import { Avatar, DataTable, FilterBar, avatarTone, filterInputClass, initials } from "../components/PeopleList";
 
 type Teacher = {
@@ -43,6 +44,7 @@ export function TeachersPage() {
   const [placement, setPlacement] = useState<Placement[]>([]);
   const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", qualification: "" });
   const [invitePath, setInvitePath] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [yearId, setYearId] = useState("");
   const [classId, setClassId] = useState("");
@@ -110,7 +112,8 @@ export function TeachersPage() {
             : undefined,
         }),
       });
-      setInvitePath(created.setPasswordPath);
+      setInviteEmail(form.email);
+      setInvitePath(passwordLinkUrl(created.setPasswordPath));
       setForm({ firstName: "", lastName: "", email: "", phone: "", qualification: "" });
       setSelectedSubjectIds([]);
       setAssignOnCreate(false);
@@ -254,11 +257,7 @@ export function TeachersPage() {
           </button>
         </div>
       </form>
-      {invitePath ? (
-        <p className="rounded-xl border border-slate-200 bg-white p-4 text-slate-800 shadow-sm">
-          Copy this link and send it on WhatsApp. The teacher sets a separate password: {invitePath}
-        </p>
-      ) : null}
+      {invitePath ? <PasswordLinkDialog email={inviteEmail} url={invitePath} onClose={() => setInvitePath("")} /> : null}
       {error ? <p className="text-red-600">{error}</p> : null}
       <div className={isCreating ? "hidden" : "space-y-6"}>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -385,6 +384,7 @@ export function TeacherProfilePage() {
   const [sectionId, setSectionId] = useState("");
   const [assigning, setAssigning] = useState(false);
   const [notice, setNotice] = useState("");
+  const [passwordLink, setPasswordLink] = useState("");
 
   async function loadProfile() {
     if (!teacherId) return;
@@ -531,7 +531,7 @@ export function TeacherProfilePage() {
           </button>
           <button type="button" className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#2563eb]" onClick={() => {
             api<{ setPasswordPath: string }>(`/api/v1/teachers/${teacherId}/access`, { method: "POST" })
-              .then((result) => setNotice(`${profile.hasLogin ? "Reset" : "Invite"} link: ${result.setPasswordPath}`))
+              .then((result) => setPasswordLink(passwordLinkUrl(result.setPasswordPath)))
               .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update login access."));
           }}>
             {profile.hasLogin ? "Reset password" : "Invite login"}
@@ -574,6 +574,7 @@ export function TeacherProfilePage() {
           <Link to="/school/teachers" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"><Check className="h-4 w-4" /> Done</Link>
         </div>
         {notice ? <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700">{notice}</p> : null}
+        {passwordLink ? <PasswordLinkDialog url={passwordLink} onClose={() => setPasswordLink("")} /> : null}
         <p className="mt-5 text-xs font-bold uppercase tracking-wide text-slate-400">My school</p>
         <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-800">{profile.schools.map((school) => school.name).join(", ") || "This school"}</div>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -701,34 +702,53 @@ export function SetPasswordPage() {
   const token = new URLSearchParams(window.location.search).get("token") ?? "";
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [message, setMessage] = useState("");
+  const [linkState, setLinkState] = useState<"checking" | "ready" | "invalid" | "saved">("checking");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (token.length < 20) {
+      setLinkState("invalid");
+      return;
+    }
+    api("/api/v1/auth/set-password/check", { method: "POST", body: JSON.stringify({ token }) })
+      .then(() => setLinkState("ready"))
+      .catch(() => setLinkState("invalid"));
+  }, [token]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
     try {
       await api("/api/v1/auth/set-password", { method: "POST", body: JSON.stringify({ token, password }) });
-      setMessage("Password saved. You can sign in with your email.");
+      window.history.replaceState(null, "", "/set-password");
+      setLinkState("saved");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not save the password.");
+      const message = caught instanceof Error ? caught.message : "Could not save the password.";
+      if (message === "This link is no longer valid.") setLinkState("invalid");
+      else setError(message);
     }
   }
 
   return (
     <main className="grid min-h-screen place-items-center bg-[#f9fafb] px-4">
-      <form onSubmit={submit} className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+      <section className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
         <h1 className="text-3xl font-semibold text-slate-900">Set password</h1>
-        <span className="relative mt-6 block">
-          <input className="w-full rounded-xl border border-slate-200 bg-[#f9fafb] px-3 py-2 pr-16 text-slate-800" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} required />
-          <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-semibold text-blue-700" onClick={() => setShowPassword((current) => !current)}>
-            {showPassword ? "Hide" : "Show"}
-          </button>
-        </span>
-        {error ? <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-red-600">{error}</p> : null}
-        {message ? <p className="mt-4 rounded-xl bg-blue-50 px-3 py-2 text-blue-600">{message}</p> : null}
-        <button className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500">Save password</button>
-      </form>
+        {linkState === "checking" ? <p className="mt-6 text-sm text-slate-500">Checking this link...</p> : null}
+        {linkState === "invalid" ? <p className="mt-6 rounded-xl bg-rose-50 px-3 py-3 text-sm text-rose-700">This link is no longer valid. Ask the school for a new one.</p> : null}
+        {linkState === "saved" ? <p className="mt-6 rounded-xl bg-blue-50 px-3 py-3 text-sm text-blue-700">Password saved. This link has been used and cannot be opened again. Sign in with your email.</p> : null}
+        {linkState === "ready" ? (
+          <form onSubmit={submit}>
+            <span className="relative mt-6 block">
+              <input className="w-full rounded-xl border border-slate-200 bg-[#f9fafb] px-3 py-2 pr-16 text-slate-800" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
+              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-semibold text-blue-700" onClick={() => setShowPassword((current) => !current)}>
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </span>
+            {error ? <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-red-600">{error}</p> : null}
+            <button className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500">Save password</button>
+          </form>
+        ) : null}
+      </section>
     </main>
   );
 }
