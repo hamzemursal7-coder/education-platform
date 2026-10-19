@@ -26,14 +26,14 @@ export function Avatar({ name, seed, photoUrl, size = "md" }: { name: string; se
 
 export function FilterBar({ children }: { children: ReactNode }) {
   return (
-    <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+    <div className="grid gap-3 rounded-xl border border-[#e2e8f0] bg-white p-3 shadow-sm md:grid-cols-4">
       {children}
     </div>
   );
 }
 
 export function filterInputClass() {
-  return "rounded-xl border border-slate-200 bg-[#f9fafb] px-3 py-2 text-slate-800";
+  return "h-10 rounded-lg border border-[#e2e8f0] bg-white px-3 text-sm text-slate-800";
 }
 
 export function DataTable({
@@ -46,18 +46,18 @@ export function DataTable({
   empty?: string;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-      <table className="min-w-full text-left text-sm text-slate-800">
-        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+    <div className="overflow-x-auto rounded-xl border border-[#e2e8f0] bg-white shadow-sm">
+      <table className="min-w-full text-left text-[13px] text-slate-800">
+        <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
           <tr>
             {headers.map((header) => (
-              <th key={header} className="px-4 py-3 font-medium">{header}</th>
+              <th key={header} className="px-3 py-2.5 font-semibold">{header}</th>
             ))}
           </tr>
         </thead>
         <tbody>{children}</tbody>
       </table>
-      {empty ? <p className="border-t border-slate-100 px-4 py-6 text-slate-500">{empty}</p> : null}
+      {empty ? <p className="border-t border-slate-100 px-3 py-6 text-[13px] text-slate-500">{empty}</p> : null}
     </div>
   );
 }

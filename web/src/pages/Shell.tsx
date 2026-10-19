@@ -331,17 +331,17 @@ export function Shell({
   const hideShellTitle = schoolMenu && (title === "Parents" || title === "Students" || title === "Attendance" || title === "Student profile");
 
   return (
-    <div className="flex min-h-screen bg-[#f5f7fb] text-slate-900">
+    <div className="flex min-h-screen bg-[#f8fafc] text-slate-900">
       {menuOpen ? <button className="fixed inset-0 z-30 bg-slate-950/40 md:hidden" aria-label="Close menu" onClick={() => setMenuOpen(false)} /> : null}
-      <aside className={`${menuOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 z-40 flex w-60 flex-col transition-transform md:static md:translate-x-0 ${schoolMenu ? "border-r border-sky-100 bg-white text-slate-700" : "bg-[#0f172a] text-slate-200"}`}>
-        <div className={`flex items-center gap-3 px-5 py-5 ${schoolMenu ? "border-b border-sky-100 bg-gradient-to-br from-sky-50 to-white" : ""}`}>
-          <img src="/school-logo.svg" alt="" className="h-12 w-12 rounded-full bg-white object-cover" />
+      <aside className={`${menuOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 z-40 flex w-60 flex-col border-r border-[#e2e8f0] transition-transform md:static md:translate-x-0 ${schoolMenu ? "bg-white text-slate-700" : "border-slate-800 bg-[#0f172a] text-slate-200"}`}>
+        <div className={`flex h-16 items-center gap-3 px-4 ${schoolMenu ? "border-b border-[#e2e8f0]" : "border-b border-slate-800"}`}>
+          <img src="/school-logo.svg" alt="" className="h-9 w-9 rounded-full bg-white object-cover" />
           <div className="min-w-0">
-            <div className={`truncate text-base font-semibold ${schoolMenu ? "text-sky-950" : "text-white"}`}>{user.school?.name ?? "Education"}</div>
-            <div className={`text-[11px] font-medium uppercase tracking-wider ${schoolMenu ? "text-sky-600" : "text-slate-400"}`}>{user.actingFromSuperAdmin ? "School view" : portalLabel}</div>
+            <div className={`truncate text-sm font-semibold ${schoolMenu ? "text-slate-950" : "text-white"}`}>{user.school?.name ?? "Education"}</div>
+            <div className={`text-[11px] font-medium uppercase tracking-wider ${schoolMenu ? "text-slate-500" : "text-slate-400"}`}>{user.actingFromSuperAdmin ? "School view" : portalLabel}</div>
           </div>
         </div>
-        <div className={`px-5 py-3 text-[11px] font-semibold uppercase tracking-wider ${schoolMenu ? "text-sky-500" : "text-slate-500"}`}>Main menu</div>
+        <div className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wider ${schoolMenu ? "text-slate-400" : "text-slate-500"}`}>Main menu</div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
           {links.map((item) => (
             <NavLink
@@ -349,8 +349,8 @@ export function Shell({
               to={item.to}
               className={({ isActive }) =>
                 schoolMenu
-                  ? `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${isActive ? "bg-sky-600 font-semibold text-white shadow-sm" : "text-slate-600 hover:bg-sky-50 hover:text-sky-800"}`
-                  : `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${isActive ? "bg-[#2563eb] font-medium text-white shadow-lg shadow-blue-950/30" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`
+                  ? `flex h-10 items-center gap-3 rounded-lg px-3 text-[13px] ${isActive ? "bg-[#2563eb] font-semibold text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`
+                  : `flex h-10 items-center gap-3 rounded-lg px-3 text-[13px] ${isActive ? "bg-[#2563eb] font-medium text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white"}`
               }
             >
               <span className="opacity-90">{navIcons[item.icon]}</span>
@@ -379,7 +379,7 @@ export function Shell({
           <button className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 md:hidden" aria-label="Open menu" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button>
           <form className="relative min-w-0 flex-1 md:mx-auto md:max-w-xl" onSubmit={submitSearch}>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input ref={searchRef} value={headerQuery} onChange={(event) => setHeaderQuery(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-16 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="Search anything..." />
+            <input ref={searchRef} value={headerQuery} onChange={(event) => setHeaderQuery(event.target.value)} className="h-10 w-full rounded-lg border border-[#e2e8f0] bg-slate-50 pl-10 pr-16 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#2563eb] focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="Search anything..." />
           </form>
           {announcementTo[user.role] ? (
             <Link to={announcementTo[user.role]} className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label="Announcements"><Bell className="h-5 w-5" /></Link>
@@ -408,11 +408,11 @@ export function Shell({
           )}
           {hideShellTitle ? null : (
             <>
-              <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-950 md:text-3xl">{title}</h1>
-              <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
+              <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">{title}</h1>
+              <p className="mt-1 text-[13px] text-[#64748b]">{subtitle}</p>
             </>
           )}
-          <div className="mt-5">{children}</div>
+          <div className="mt-4">{children}</div>
         </div>
       </section>
     </div>

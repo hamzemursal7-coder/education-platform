@@ -2,19 +2,41 @@
 
 :root {
   --emp-sidebar: #0f172a;
-  --emp-sidebar-hover: #1e293b;
   --emp-accent: #2563eb;
   --emp-accent-hover: #1d4ed8;
-  --emp-canvas: #f5f7fb;
+  --emp-canvas: #f8fafc;
   --emp-card: #ffffff;
   --emp-text: #0f172a;
   --emp-muted: #64748b;
-  --emp-border: #e6ebf2;
+  --emp-border: #e2e8f0;
+  --emp-success: #16a34a;
+  --emp-warning: #d97706;
+  --emp-error: #dc2626;
 }
 
 body {
   margin: 0;
   background: var(--emp-canvas);
   color: var(--emp-text);
-  font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+input,
+select,
+textarea {
+  font-size: 14px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--emp-accent);
+  outline-offset: 2px;
 }
