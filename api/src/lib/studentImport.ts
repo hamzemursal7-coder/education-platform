@@ -17,7 +17,7 @@ async function nextValue(tx: Prisma.TransactionClient, key: string) {
   return rows[0].value;
 }
 
-export async function importStudentRows(school: SchoolRef, rows: StudentSheetRow[]) {
+export async function importStudentRows(school: SchoolRef, rows: StudentSheetRow[], defaultYearId = "") {
   const years = await prisma.academicYear.findMany({
     where: { schoolId: school.id },
     include: { classes: { include: { sections: true } } },
@@ -39,28 +39,29 @@ export async function importStudentRows(school: SchoolRef, rows: StudentSheetRow
   const allowed = new Set(levelsForSchool(school.type));
   const seenNira = new Set<string>();
   const skipped: ImportSkip[] = [];
-  let created = 0;
+  const students: Array<{ row: number; name: string; studentId: string; rollNumber: number; academicYearId: string }> = [];
 
   for (const row of rows) {
     const name = [row.firstName, row.fatherName, row.grandfatherName].filter(Boolean).join(" ") || `Row ${row.rowNumber}`;
-    const reason = await importOne(school, row, { years, otherSchools, guardians, allowed, seenNira, existingPeople, seenPeople });
-    if (reason) skipped.push({ row: row.rowNumber, name, reason });
-    else created += 1;
+    const outcome = await importOne(school, row, { years, otherSchools, guardians, allowed, seenNira, existingPeople, seenPeople, defaultYearId });
+    if (typeof outcome === "string") skipped.push({ row: row.rowNumber, name, reason: outcome });
+    else students.push({ row: row.rowNumber, name, ...outcome });
   }
-  return { accepted: created, rejected: skipped.length, created, skipped };
+  return { accepted: students.length, rejected: skipped.length, created: students.length, skipped, students };
 }
 
 async function importOne(
   school: SchoolRef,
   row: StudentSheetRow,
   context: {
-    years: Array<{ id: string; name: string; classes: Array<{ id: string; level: LevelCode; sections: Array<{ id: string; name: string }> }> }>;
+    years: Array<{ id: string; name: string; isCurrent: boolean; classes: Array<{ id: string; level: LevelCode; sections: Array<{ id: string; name: string }> }> }>;
     otherSchools: Array<{ id: string; name: string }>;
     guardians: Array<{ id: string; phone: string; email: string | null }>;
     allowed: Set<LevelCode>;
     seenNira: Set<string>;
     existingPeople: Set<string>;
     seenPeople: Set<string>;
+    defaultYearId: string;
   },
 ) {
   if (row.firstName.trim().length < 2 || row.fatherName.trim().length < 2 || row.grandfatherName.trim().length < 2) {
@@ -72,7 +73,9 @@ async function importOne(
   if (!dateOfBirth) return "Date of birth must be a real past date, written as YYYY-MM-DD.";
   const level = parseLevel(row.className);
   if (!level || !context.allowed.has(level)) return "Class must be Class 1–8 or Form 1–4, and it must belong to this school.";
-  const year = context.years.find((item) => item.name.trim().toLowerCase() === row.academicYear.trim().toLowerCase());
+  const year = row.academicYear.trim()
+    ? context.years.find((item) => item.name.trim().toLowerCase() === row.academicYear.trim().toLowerCase())
+    : context.years.find((item) => item.id === context.defaultYearId) ?? context.years.find((item) => item.isCurrent) ?? context.years[0];
   if (!year) return `Academic year "${row.academicYear || "blank"}" was not found at this school.`;
   const classGroup = year.classes.find((item) => item.level === level);
   if (!classGroup) return `${row.className} is not open in ${year.name}.`;
@@ -81,7 +84,7 @@ async function importOne(
   if (!section) return `Section "${row.section || "blank"}" was not found in ${row.className}.`;
 
   const studentId = row.studentId.trim();
-  if (studentId) {
+  if (!isBlankStudentId(studentId)) {
     const existing = await prisma.student.findFirst({
       where: { OR: [{ permanentId: studentId }, { secondaryPermanentId: studentId }] },
       select: { enrollments: { where: { schoolId: school.id }, select: { id: true }, take: 1 } },
@@ -145,8 +148,9 @@ async function importOne(
 
   const band = level.startsWith("CLASS_") ? "P" : "S";
   const yearMark = String(new Date().getFullYear()).slice(2);
+  let saved: { studentId: string; rollNumber: number; academicYearId: string };
   try {
-    await prisma.$transaction(async (tx) => {
+    saved = await prisma.$transaction(async (tx) => {
       const sequence = await nextValue(tx, `student:${school.organizationId}:${yearMark}:${band}`);
       const permanentId = `STU-${yearMark}-${band}-${String(sequence).padStart(6, "0")}`;
       const studentNumber = await nextStudentNumber(tx, school.id);
@@ -184,6 +188,7 @@ async function importOne(
           data: { studentId: student.id, guardianId: parent.id, relationship: "GUARDIAN" },
         });
       }
+      return { studentId: permanentId, rollNumber, academicYearId: year.id };
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -194,7 +199,12 @@ async function importOne(
   }
   context.seenPeople.add(identity);
   context.existingPeople.add(identity);
-  return "";
+  return saved;
+}
+
+function isBlankStudentId(value: string) {
+  const text = value.trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  return !text || text === "na" || text === "none" || text === "new";
 }
 
 function matchGuardian(guardians: Array<{ id: string; phone: string; email: string | null }>, phone: string, email: string) {

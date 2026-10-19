@@ -173,7 +173,7 @@ export function StudentsPage() {
   const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [importing, setImporting] = useState(false);
-  const [importReport, setImportReport] = useState<{ accepted: number; rejected: number; skipped: Array<{ row: number; name: string; reason: string }> } | null>(null);
+  const [importReport, setImportReport] = useState<{ accepted: number; rejected: number; skipped: Array<{ row: number; name: string; reason: string }>; students: Array<{ row: number; name: string; studentId: string; rollNumber: number; academicYearId: string }> } | null>(null);
 
   useEffect(() => {
     api<{ years: YearOption[]; levels: Array<{ code: string; label: string }> }>("/api/v1/academic-years")
@@ -276,6 +276,7 @@ export function StudentsPage() {
     try {
       const body = new FormData();
       body.append("file", file);
+      if (applied.yearId) body.append("academicYearId", applied.yearId);
       const sessionKey = sessionStorage.getItem("emp_session") ?? "";
       const response = await fetch("/api/v1/students/import", {
         method: "POST",
@@ -283,13 +284,21 @@ export function StudentsPage() {
         headers: sessionKey ? { "X-Session-Key": sessionKey } : undefined,
         body,
       });
-      const payload = (await response.json().catch(() => null)) as { message?: string; accepted?: number; rejected?: number; created?: number; skipped?: Array<{ row: number; name: string; reason: string }> } | null;
+      const payload = (await response.json().catch(() => null)) as { message?: string; accepted?: number; rejected?: number; created?: number; skipped?: Array<{ row: number; name: string; reason: string }>; students?: Array<{ row: number; name: string; studentId: string; rollNumber: number; academicYearId: string }> } | null;
       if (!response.ok || !payload || !payload.skipped) {
         throw new Error(payload?.message ?? "Could not import students.");
       }
       const accepted = payload.accepted ?? payload.created ?? 0;
       const rejected = payload.rejected ?? payload.skipped.length;
-      setImportReport({ accepted, rejected, skipped: payload.skipped });
+      const students = payload.students ?? [];
+      setImportReport({ accepted, rejected, skipped: payload.skipped, students });
+      const placedYear = students.find((student) => student.academicYearId)?.academicYearId;
+      if (placedYear) {
+        const next = { yearId: placedYear, classId: "ALL", sectionId: "ALL", status: "ALL" };
+        setDraft(next);
+        setApplied(next);
+        setPage(1);
+      }
       setReloadKey((current) => current + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not import students.");
@@ -380,7 +389,7 @@ export function StudentsPage() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="font-semibold text-slate-900">Import result</h3>
-              <p className="mt-1 text-sm text-slate-500">Duplicates and invalid rows are rejected. Accepted students are saved.</p>
+              <p className="mt-1 text-sm text-slate-500">A new student can leave Student ID and Roll no. empty. The system assigns both, then shows them here and in the list.</p>
             </div>
             <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => setImportReport(null)} aria-label="Close import result"><X className="h-4 w-4" /></button>
           </div>
@@ -394,6 +403,11 @@ export function StudentsPage() {
               <p className="text-sm font-semibold text-rose-800">Rejected</p>
             </article>
           </div>
+          {importReport.students.length ? (
+            <ul className="mt-3 max-h-48 space-y-1 overflow-auto text-sm text-emerald-800">
+              {importReport.students.map((item) => <li key={`${item.row}-${item.studentId}`}>Row {item.row}: {item.name}. ID {item.studentId}. Roll {item.rollNumber}</li>)}
+            </ul>
+          ) : null}
           {importReport.skipped.length ? (
             <ul className="mt-3 max-h-48 space-y-1 overflow-auto text-sm text-rose-700">
               {importReport.skipped.map((item) => <li key={`${item.row}-${item.name}`}>Row {item.row}: {item.name}. {item.reason}</li>)}

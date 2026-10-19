@@ -205,7 +205,7 @@ export async function writeStudentWorkbook(rows: Array<Partial<Record<StudentShe
   guide.getRow(1).font = { bold: true };
   for (const item of placement) guide.addRow(item);
   guide.addRow([]);
-  guide.addRow(["Leave Student ID empty for a new student. Class must be written as Class 1 or Form 1. Gender is MALE or FEMALE. Date of birth is YYYY-MM-DD."]);
+  guide.addRow(["Leave Student ID and Roll no. empty for a new student. The system assigns both. Class must be written as Class 1 or Form 1. Gender is MALE or FEMALE. Date of birth is YYYY-MM-DD."]);
   guide.addRow(["Parent name, phone, and email are optional. The same parent phone links siblings to one parent. A portal login is not created by this file."]);
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

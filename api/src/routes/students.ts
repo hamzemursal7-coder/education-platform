@@ -364,7 +364,7 @@ studentsRouter.post("/students/import", sheetUpload.single("file"), async (req, 
       throw new HttpError(400, error instanceof Error ? error.message : "Could not read this file. Use the template.");
     }
     if (!rows.length) throw new HttpError(400, "The file has no students to import.");
-    const result = await importStudentRows(school, rows);
+    const result = await importStudentRows(school, rows, String(req.body?.academicYearId ?? ""));
     if (result.created) {
       await writeAudit({
         schoolId: school.id,
