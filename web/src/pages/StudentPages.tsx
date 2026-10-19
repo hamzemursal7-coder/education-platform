@@ -84,9 +84,9 @@ function MetaChip({ icon, label }: { icon: ReactNode; label: string }) {
 
 function ProfileField({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
   return (
-    <div className={`min-w-0 ${wide ? "md:col-span-2 xl:col-span-4" : ""}`}>
-      <dt className="text-[13px] text-slate-500">{label}</dt>
-      <dd className="mt-0.5 break-words text-sm font-medium text-slate-900">{value}</dd>
+    <div className={`min-w-0 rounded-lg bg-slate-50 px-2.5 py-2 ${wide ? "col-span-2 xl:col-span-4" : ""}`}>
+      <dt className="text-[11px] leading-4 text-slate-500">{label}</dt>
+      <dd className="mt-0.5 break-words text-[13px] font-semibold leading-5 text-slate-900">{value}</dd>
     </div>
   );
 }
@@ -1094,7 +1094,7 @@ export function StudentProfilePage() {
               </div>
             </form>
           ) : (
-            <dl className="mt-4 grid grid-cols-1 gap-x-3 gap-y-4 border-t border-slate-100 pt-4 md:grid-cols-2 md:gap-x-5 xl:grid-cols-4">
+            <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 md:gap-3 xl:grid-cols-4">
               <ProfileField label="Student ID" value={profile.permanentId} />
               <ProfileField label="Secondary ID" value={profile.secondaryPermanentId || "—"} />
               <ProfileField label="Age" value={age} />
