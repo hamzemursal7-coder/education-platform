@@ -173,7 +173,7 @@ export function StudentsPage() {
   const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [importing, setImporting] = useState(false);
-  const [importReport, setImportReport] = useState<{ created: number; skipped: Array<{ row: number; name: string; reason: string }> } | null>(null);
+  const [importReport, setImportReport] = useState<{ accepted: number; rejected: number; skipped: Array<{ row: number; name: string; reason: string }> } | null>(null);
 
   useEffect(() => {
     api<{ years: YearOption[]; levels: Array<{ code: string; label: string }> }>("/api/v1/academic-years")
@@ -283,11 +283,13 @@ export function StudentsPage() {
         headers: sessionKey ? { "X-Session-Key": sessionKey } : undefined,
         body,
       });
-      const payload = (await response.json().catch(() => null)) as { message?: string; created?: number; skipped?: Array<{ row: number; name: string; reason: string }> } | null;
-      if (!response.ok || !payload || typeof payload.created !== "number" || !payload.skipped) {
+      const payload = (await response.json().catch(() => null)) as { message?: string; accepted?: number; rejected?: number; created?: number; skipped?: Array<{ row: number; name: string; reason: string }> } | null;
+      if (!response.ok || !payload || !payload.skipped) {
         throw new Error(payload?.message ?? "Could not import students.");
       }
-      setImportReport({ created: payload.created, skipped: payload.skipped });
+      const accepted = payload.accepted ?? payload.created ?? 0;
+      const rejected = payload.rejected ?? payload.skipped.length;
+      setImportReport({ accepted, rejected, skipped: payload.skipped });
       setReloadKey((current) => current + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not import students.");
@@ -377,14 +379,24 @@ export function StudentsPage() {
         <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h3 className="font-semibold text-slate-900">{importReport.created} students added</h3>
-              <p className="mt-1 text-sm text-slate-500">{importReport.skipped.length ? `${importReport.skipped.length} rows were skipped.` : "Every row was imported. Parents on the same row were linked, and an existing parent phone was reused."}</p>
+              <h3 className="font-semibold text-slate-900">Import result</h3>
+              <p className="mt-1 text-sm text-slate-500">Duplicates and invalid rows are rejected. Accepted students are saved.</p>
             </div>
             <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" onClick={() => setImportReport(null)} aria-label="Close import result"><X className="h-4 w-4" /></button>
           </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <article className="rounded-xl bg-emerald-50 px-3 py-3">
+              <p className="text-2xl font-bold text-emerald-700">{importReport.accepted}</p>
+              <p className="text-sm font-semibold text-emerald-800">Accepted</p>
+            </article>
+            <article className="rounded-xl bg-rose-50 px-3 py-3">
+              <p className="text-2xl font-bold text-rose-700">{importReport.rejected}</p>
+              <p className="text-sm font-semibold text-rose-800">Rejected</p>
+            </article>
+          </div>
           {importReport.skipped.length ? (
             <ul className="mt-3 max-h-48 space-y-1 overflow-auto text-sm text-rose-700">
-              {importReport.skipped.map((item) => <li key={`${item.row}-${item.name}`}>Row {item.row}: {item.name} — {item.reason}</li>)}
+              {importReport.skipped.map((item) => <li key={`${item.row}-${item.name}`}>Row {item.row}: {item.name}. {item.reason}</li>)}
             </ul>
           ) : null}
         </section>

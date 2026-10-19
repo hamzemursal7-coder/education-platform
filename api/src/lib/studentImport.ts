@@ -2,7 +2,7 @@ import { Prisma, type LevelCode, type SchoolType } from "@prisma/client";
 import { HttpError } from "../middleware/error.js";
 import { levelsForSchool } from "./levels.js";
 import { prisma } from "./prisma.js";
-import { parseGender, parseLevel, parseSheetDate, phoneKey, splitParentName, type StudentSheetRow } from "./studentSheet.js";
+import { parseGender, parseLevel, parseSheetDate, phoneKey, splitParentName, studentIdentityKey, type StudentSheetRow } from "./studentSheet.js";
 
 type SchoolRef = { id: string; organizationId: string; type: SchoolType };
 
@@ -30,6 +30,12 @@ export async function importStudentRows(school: SchoolRef, rows: StudentSheetRow
     where: { organizationId: school.organizationId },
     select: { id: true, phone: true, email: true },
   });
+  const existingStudents = await prisma.student.findMany({
+    where: { organizationId: school.organizationId, enrollments: { some: { schoolId: school.id } } },
+    select: { firstName: true, fatherName: true, grandfatherName: true, dateOfBirth: true },
+  });
+  const existingPeople = new Set(existingStudents.map((student) => studentIdentityKey(student.firstName, student.fatherName, student.grandfatherName, student.dateOfBirth.toISOString().slice(0, 10))));
+  const seenPeople = new Set<string>();
   const allowed = new Set(levelsForSchool(school.type));
   const seenNira = new Set<string>();
   const skipped: ImportSkip[] = [];
@@ -37,11 +43,11 @@ export async function importStudentRows(school: SchoolRef, rows: StudentSheetRow
 
   for (const row of rows) {
     const name = [row.firstName, row.fatherName, row.grandfatherName].filter(Boolean).join(" ") || `Row ${row.rowNumber}`;
-    const reason = await importOne(school, row, { years, otherSchools, guardians, allowed, seenNira });
+    const reason = await importOne(school, row, { years, otherSchools, guardians, allowed, seenNira, existingPeople, seenPeople });
     if (reason) skipped.push({ row: row.rowNumber, name, reason });
     else created += 1;
   }
-  return { created, skipped };
+  return { accepted: created, rejected: skipped.length, created, skipped };
 }
 
 async function importOne(
@@ -53,6 +59,8 @@ async function importOne(
     guardians: Array<{ id: string; phone: string; email: string | null }>;
     allowed: Set<LevelCode>;
     seenNira: Set<string>;
+    existingPeople: Set<string>;
+    seenPeople: Set<string>;
   },
 ) {
   if (row.firstName.trim().length < 2 || row.fatherName.trim().length < 2 || row.grandfatherName.trim().length < 2) {
@@ -79,18 +87,22 @@ async function importOne(
       select: { enrollments: { where: { schoolId: school.id }, select: { id: true }, take: 1 } },
     });
     if (!existing) return "Student ID was not found. Leave Student ID empty to add a new student.";
-    if (existing.enrollments.length) return "This student is already in this school.";
-    return "This Student ID belongs to another school. Leave Student ID empty to add a new student.";
+    if (existing.enrollments.length) return "Duplicate. This student is already in this school.";
+    return "Duplicate. This Student ID belongs to another school.";
   }
 
   const nira = row.nationalId.trim();
   if (nira) {
     const key = nira.toLowerCase();
-    if (context.seenNira.has(key)) return "This NIRA is repeated in the file.";
+    if (context.seenNira.has(key)) return "Duplicate. This NIRA is repeated in the file.";
     const taken = await prisma.student.findUnique({ where: { nationalId: nira }, select: { id: true } });
-    if (taken) return "This NIRA is already registered.";
+    if (taken) return "Duplicate. This NIRA is already registered.";
     context.seenNira.add(key);
   }
+
+  const identity = studentIdentityKey(row.firstName, row.fatherName, row.grandfatherName, dateOfBirth);
+  if (context.seenPeople.has(identity)) return "Duplicate. This student is repeated in the file.";
+  if (context.existingPeople.has(identity)) return "Duplicate. This student is already in this school.";
 
   let previousSchoolId: string | null = null;
   if (row.previousSchool.trim()) {
@@ -175,11 +187,13 @@ async function importOne(
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return "This student could not be saved because a NIRA or number is already used.";
+      return "Duplicate. This student could not be saved because a NIRA or number is already used.";
     }
     if (error instanceof HttpError) return error.message;
     return "This row could not be saved.";
   }
+  context.seenPeople.add(identity);
+  context.existingPeople.add(identity);
   return "";
 }
 

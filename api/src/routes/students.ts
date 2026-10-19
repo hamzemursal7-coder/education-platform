@@ -371,7 +371,7 @@ studentsRouter.post("/students/import", sheetUpload.single("file"), async (req, 
         actorUserId: req.authUser!.id,
         action: "STUDENT_IMPORT",
         entityType: "Student",
-        summary: `Imported ${result.created} students. ${result.skipped.length} rows were skipped.`,
+        summary: `Imported ${result.accepted} students. ${result.rejected} rows were rejected.`,
       });
     }
     res.json(result);

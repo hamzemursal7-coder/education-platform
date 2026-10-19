@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseGender, parseLevel, parseSheetDate, readStudentSheet, splitParentName, writeStudentWorkbook } from "./lib/studentSheet.js";
+import { parseGender, parseLevel, parseSheetDate, readStudentSheet, splitParentName, studentIdentityKey, writeStudentWorkbook } from "./lib/studentSheet.js";
 
 test("student sheet understands class, form, gender, and dates", () => {
   assert.equal(parseLevel("Form 1"), "FORM_1");
@@ -14,6 +14,8 @@ test("student sheet understands class, form, gender, and dates", () => {
   assert.equal(parseSheetDate("2014-02-31"), null);
   assert.deepEqual(splitParentName("Farah Aadan"), { firstName: "Farah", lastName: "Aadan" });
   assert.equal(splitParentName("Farah"), null);
+  assert.equal(studentIdentityKey("Xasan", "Ali", "Aadan", "2014-05-12"), studentIdentityKey("xasan", "ali", "aadan", "2014-05-12"));
+  assert.notEqual(studentIdentityKey("Xasan", "Ali", "Aadan", "2014-05-12"), studentIdentityKey("Xasan", "Ali", "Aadan", "2015-05-12"));
 });
 
 test("student sheet keeps a new row and its parent together", async () => {

@@ -121,6 +121,11 @@ export function splitParentName(value: string) {
   return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
 }
 
+export function studentIdentityKey(firstName: string, fatherName: string, grandfatherName: string, dateOfBirth: string) {
+  const name = [firstName, fatherName, grandfatherName].map((part) => part.trim().toLowerCase().replace(/\s+/g, " ")).join("|");
+  return `${name}|${dateOfBirth}`;
+}
+
 export function phoneKey(value: string) {
   const digits = value.replace(/\D/g, "");
   if (digits.length < 7) return "";
