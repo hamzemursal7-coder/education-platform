@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
-import { config } from "../config.js";
 import { prisma } from "../lib/prisma.js";
 import { hashPassword, verifyPassword } from "../lib/passwords.js";
+import { clearSession, clearSharedSession, newSessionKey, readRefreshToken, sessionKeyFrom, writeSession } from "../lib/sessionCookie.js";
 import { hashRefreshToken, newRefreshToken, signAccessToken } from "../lib/tokens.js";
 import { requireAuth } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
@@ -12,16 +12,9 @@ const loginSchema = z.object({
   password: z.string().min(8),
 });
 
-const cookieBase = {
-  httpOnly: true,
-  sameSite: "lax" as const,
-  secure: config.cookieSecure,
-  path: "/",
-};
-
-function setSessionCookies(res: import("express").Response, accessToken: string, refreshToken: string) {
-  res.cookie("emp_access", accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
-  res.cookie("emp_refresh", refreshToken, { ...cookieBase, maxAge: 14 * 24 * 60 * 60 * 1000 });
+function setSessionCookies(res: import("express").Response, key: string, accessToken: string, refreshToken: string) {
+  clearSharedSession(res);
+  writeSession(res, key, accessToken, refreshToken);
 }
 
 export const authRouter = Router();
@@ -89,7 +82,8 @@ authRouter.post("/login", async (req, res, next) => {
         expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
       },
     });
-    setSessionCookies(res, accessToken, refresh.token);
+    const sessionKey = newSessionKey();
+    setSessionCookies(res, sessionKey, accessToken, refresh.token);
     res.json({
       id: sessionUser.id,
       email: sessionUser.email,
@@ -97,6 +91,7 @@ authRouter.post("/login", async (req, res, next) => {
       firstName: sessionUser.firstName,
       lastName: sessionUser.lastName,
       schoolId: sessionUser.schoolId,
+      sessionKey,
     });
   } catch (error) {
     next(error);
@@ -105,7 +100,7 @@ authRouter.post("/login", async (req, res, next) => {
 
 authRouter.post("/refresh", async (req, res, next) => {
   try {
-    const current = req.cookies?.emp_refresh as string | undefined;
+    const current = readRefreshToken(req);
     if (!current) {
       throw new HttpError(401, "Authentication is required.");
     }
@@ -135,8 +130,9 @@ authRouter.post("/refresh", async (req, res, next) => {
       role: actingFromSuperAdmin ? "SCHOOL_ADMIN" : stored.user.role,
       schoolId: stored.user.schoolId,
     });
-    setSessionCookies(res, accessToken, refresh.token);
-    res.json({ ok: true });
+    const sessionKey = sessionKeyFrom(req) || newSessionKey();
+    setSessionCookies(res, sessionKey, accessToken, refresh.token);
+    res.json({ ok: true, sessionKey });
   } catch (error) {
     next(error);
   }
@@ -144,15 +140,14 @@ authRouter.post("/refresh", async (req, res, next) => {
 
 authRouter.post("/logout", async (req, res, next) => {
   try {
-    const current = req.cookies?.emp_refresh as string | undefined;
+    const current = readRefreshToken(req);
     if (current) {
       await prisma.refreshToken.updateMany({
         where: { tokenHash: hashRefreshToken(current), revokedAt: null },
         data: { revokedAt: new Date() },
       });
     }
-    res.clearCookie("emp_access", { path: "/" });
-    res.clearCookie("emp_refresh", { path: "/" });
+    clearSession(res, sessionKeyFrom(req));
     res.json({ ok: true });
   } catch (error) {
     next(error);

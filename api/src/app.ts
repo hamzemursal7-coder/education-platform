@@ -30,6 +30,7 @@ export function createApp() {
     cors({
       origin: config.webOrigin,
       credentials: true,
+      allowedHeaders: ["Content-Type", "X-Session-Key"],
     }),
   );
   app.use(express.json());

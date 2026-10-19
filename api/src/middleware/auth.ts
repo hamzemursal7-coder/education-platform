@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import type { UserRole } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { readAccessToken as readSessionCookie } from "../lib/sessionCookie.js";
 import { readAccessToken } from "../lib/tokens.js";
 import { HttpError } from "./error.js";
 
@@ -25,7 +26,7 @@ declare global {
 }
 
 export async function requireAuth(req: Request, _res: Response, next: NextFunction) {
-  const token = req.cookies?.emp_access as string | undefined;
+  const token = readSessionCookie(req);
   if (!token) {
     next(new HttpError(401, "Authentication is required."));
     return;

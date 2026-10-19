@@ -105,12 +105,14 @@ export function PortalLoginCard({ portal, onSuccess }: { portal: PortalLoginKey;
     setPending(true);
     setError("");
     try {
-      const user = await api<SessionUser>("/api/v1/auth/login", {
+      const previous = sessionStorage.getItem("emp_session");
+      const user = await api<SessionUser & { sessionKey?: string }>("/api/v1/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
       if (user.role !== config.role) {
         await api("/api/v1/auth/logout", { method: "POST" });
+        if (previous) sessionStorage.setItem("emp_session", previous);
         setError(config.denied);
         return;
       }

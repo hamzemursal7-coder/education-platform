@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { writeAudit } from "../lib/audit.js";
 import { deleteSchoolAndRecords } from "../lib/deleteSchool.js";
 import { prisma } from "../lib/prisma.js";
+import { sessionKeyFrom, writeSession } from "../lib/sessionCookie.js";
 import { newRefreshToken, signAccessToken } from "../lib/tokens.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
@@ -85,7 +86,9 @@ superadminRouter.post("/superadmin/schools/:id/enter", requireAuth, async (req, 
       role: "SCHOOL_ADMIN",
       schoolId: school.id,
     });
-    res.cookie("emp_access", accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
+    const key = sessionKeyFrom(req);
+    if (key) writeSession(res, key, accessToken);
+    else res.cookie("emp_access", accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
     await writeAudit({
       schoolId: school.id,
       actorUserId: actor.id,
@@ -125,7 +128,9 @@ superadminRouter.post("/superadmin/exit-school", requireAuth, async (req, res, n
       role: "SUPER_ADMIN",
       schoolId: null,
     });
-    res.cookie("emp_access", accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
+    const key = sessionKeyFrom(req);
+    if (key) writeSession(res, key, accessToken);
+    else res.cookie("emp_access", accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
     if (previousSchoolId) {
       await writeAudit({
         schoolId: previousSchoolId,
