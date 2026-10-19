@@ -329,13 +329,15 @@ export function SchoolParentProfilePage() {
             <Pencil className="h-4 w-4" /> Edit
           </button>
           <button type="button" className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700" onClick={() => {
-            const path = profile.portalStatus === "NONE"
-              ? api<{ setPasswordPath: string }>(`/api/v1/guardians/${profile.id}/invite`, { method: "POST", body: JSON.stringify({ email: profile.email || window.prompt("Parent email for portal invite:") || "" }) })
-              : api<{ setPasswordPath: string }>(`/api/v1/parents/${profile.id}/access`, { method: "POST" });
+            setError("");
+            const hasPortal = profile.portalStatus !== "NONE";
+            const path = hasPortal
+              ? api<{ setPasswordPath: string }>(`/api/v1/parents/${profile.id}/access`, { method: "POST" })
+              : api<{ setPasswordPath: string }>(`/api/v1/guardians/${profile.id}/invite`, { method: "POST", body: JSON.stringify({ email: profile.email || window.prompt("Parent email for portal invite:") || "" }) });
             path.then((result) => { setPasswordLink({ url: passwordLinkUrl(result.setPasswordPath), email: profile.email || undefined }); return load(); })
               .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update login access."));
           }}>
-            {profile.portalStatus === "ACTIVE" ? "Reset password" : "Invite login"}
+            {profile.portalStatus === "NONE" ? "Invite login" : "Reset password"}
           </button>
         </div>
       </div>

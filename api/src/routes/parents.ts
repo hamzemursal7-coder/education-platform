@@ -326,9 +326,13 @@ parentsRouter.post("/guardians/:id/invite", requireAuth, requireRole("SCHOOL_ADM
       },
     });
     if (!guardian) throw new HttpError(404, "Guardian was not found.");
+    if (guardian.userId) {
+      const setPasswordPath = await issueSetPasswordLink(guardian.userId);
+      res.json({ id: guardian.id, publicId: guardian.publicId, setPasswordPath });
+      return;
+    }
     const email = z.string().email().safeParse(req.body?.email ?? guardian.email);
     if (!email.success) throw new HttpError(400, "A parent email is required for the portal.");
-    if (guardian.userId) throw new HttpError(409, "This parent already has a portal account.");
     const existing = await prisma.user.findUnique({ where: { email: email.data.toLowerCase() } });
     if (existing) throw new HttpError(409, "This email is already used by another account.");
     const invite = newRefreshToken();
@@ -377,9 +381,9 @@ parentsRouter.post("/parents/:id/access", requireAuth, requireRole("SCHOOL_ADMIN
       },
       include: { user: { select: { id: true, passwordHash: true } } },
     });
-    if (!guardian?.user) throw new HttpError(409, "Invite this parent before resetting a password.");
-    const setPasswordPath = await issueSetPasswordLink(guardian.user.id);
-    res.json({ kind: guardian.user.passwordHash ? "reset" : "invite", setPasswordPath });
+    if (!guardian?.userId) throw new HttpError(409, "Invite this parent before resetting a password.");
+    const setPasswordPath = await issueSetPasswordLink(guardian.userId);
+    res.json({ kind: guardian.user?.passwordHash ? "reset" : "invite", setPasswordPath });
   } catch (error) {
     next(error);
   }
