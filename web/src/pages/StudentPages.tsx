@@ -82,11 +82,11 @@ function MetaChip({ icon, label }: { icon: ReactNode; label: string }) {
   );
 }
 
-function ProfileField({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
+function ProfileField({ label, value, wide, tone }: { label: string; value: string; wide?: boolean; tone?: "blue" }) {
   return (
-    <div className={`min-w-0 rounded-lg bg-slate-50 px-2.5 py-2 ${wide ? "col-span-2 xl:col-span-4" : ""}`}>
-      <dt className="text-[11px] leading-4 text-slate-500">{label}</dt>
-      <dd className="mt-0.5 break-words text-[13px] font-semibold leading-5 text-slate-900">{value}</dd>
+    <div className={`min-w-0 rounded-lg px-2.5 py-2 ${wide ? "col-span-2 xl:col-span-4" : ""} ${tone === "blue" ? "bg-blue-50 ring-1 ring-blue-100" : "bg-slate-50"}`}>
+      <dt className={`text-[11px] leading-4 ${tone === "blue" ? "text-blue-700" : "text-slate-500"}`}>{label}</dt>
+      <dd className={`mt-0.5 break-words text-[13px] font-semibold leading-5 ${tone === "blue" ? "text-blue-950" : "text-slate-900"}`}>{value}</dd>
     </div>
   );
 }
@@ -1096,7 +1096,7 @@ export function StudentProfilePage() {
           ) : (
             <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 md:gap-3 xl:grid-cols-4">
               <ProfileField label="Student ID" value={profile.permanentId} />
-              <ProfileField label="Secondary ID" value={profile.secondaryPermanentId || "—"} />
+              {profile.secondaryPermanentId ? <ProfileField label="Secondary ID" value={profile.secondaryPermanentId} tone="blue" /> : null}
               <ProfileField label="Age" value={age} />
               <ProfileField label="Roll" value={current ? String(current.rollNumber) : "—"} />
               <ProfileField label="Student number" value={current?.studentNumber || "—"} />
@@ -1113,11 +1113,11 @@ export function StudentProfilePage() {
               <ProfileField label="Phone" value={profile.phone || "—"} />
               <ProfileField label="NIRA" value={profile.nationalId || "—"} />
               <ProfileField label="Parent" value={profile.guardians.length ? profile.guardians.map((link) => `${link.guardian.firstName} ${link.guardian.lastName}`).join(", ") : "Not linked"} />
-              <ProfileField label="Previous school" value={profile.previousSchool?.name || "—"} />
-              <ProfileField label="Previous class" value={profile.previousClass || "—"} />
-              <ProfileField label="Leaving year" value={profile.leavingYear || "—"} />
-              <ProfileField label="Transfer certificate" value={profile.transferCertificateNo || "—"} />
-              <ProfileField label="Notes" value={profile.staffNotes || "—"} wide />
+              {profile.previousSchool ? <ProfileField label="Previous school" value={profile.previousSchool.name} tone="blue" /> : null}
+              {profile.previousSchool && profile.previousClass ? <ProfileField label="Previous class" value={profile.previousClass} tone="blue" /> : null}
+              {profile.previousSchool && profile.leavingYear ? <ProfileField label="Leaving year" value={profile.leavingYear} tone="blue" /> : null}
+              {profile.previousSchool && profile.transferCertificateNo ? <ProfileField label="Transfer certificate" value={profile.transferCertificateNo} tone="blue" /> : null}
+              {profile.staffNotes ? <ProfileField label="Notes" value={profile.staffNotes} wide /> : null}
             </dl>
           )}
         </article>
