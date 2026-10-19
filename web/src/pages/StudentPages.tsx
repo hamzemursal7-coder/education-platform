@@ -544,7 +544,7 @@ export function NewStudentPage() {
     <form onSubmit={submit} className="mx-auto max-w-6xl space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-sm text-slate-400">Home <span className="px-1">›</span> Students <span className="px-1">›</span> Add New Student</p>
+          <p className="text-sm font-medium text-slate-500">Student</p>
           <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Add New Student</h2>
           <p className="mt-1 text-sm text-slate-500">Enter student details and assign an academic placement. Student ID and roll number are assigned automatically.</p>
         </div>

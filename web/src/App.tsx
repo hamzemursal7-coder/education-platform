@@ -65,7 +65,7 @@ export function App() {
       <Route path="/school/sections/:sectionId" element={<Protected user={user} role="SCHOOL_ADMIN" title="Section students"><SectionPage /></Protected>} />
       <Route path="/school/subjects" element={<Protected user={user} role="SCHOOL_ADMIN" title="Subjects"><SubjectsPage /></Protected>} />
       <Route path="/school/students" element={<Protected user={user} role="SCHOOL_ADMIN" title="Students"><StudentsPage /></Protected>} />
-      <Route path="/school/students/new" element={<Protected user={user} role="SCHOOL_ADMIN" title="Register student"><NewStudentPage /></Protected>} />
+      <Route path="/school/students/new" element={<Protected user={user} role="SCHOOL_ADMIN" title="Students"><NewStudentPage /></Protected>} />
       <Route path="/school/students/:studentId" element={<Protected user={user} role="SCHOOL_ADMIN" title="Student profile"><StudentProfilePage /></Protected>} />
       <Route path="/school/parents" element={<Protected user={user} role="SCHOOL_ADMIN" title="Parents"><SchoolParentsPage /></Protected>} />
       <Route path="/school/parents/:parentId" element={<Protected user={user} role="SCHOOL_ADMIN" title="Parent profile"><SchoolParentProfilePage /></Protected>} />
