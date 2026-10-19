@@ -26,7 +26,6 @@ import {
   Settings,
   School,
   Shield,
-  Star,
   Trash2,
   User,
   UserPlus,
@@ -82,14 +81,6 @@ type Summary = {
     feesCollected: number;
     feesOutstanding: number;
   }>;
-};
-
-const schoolIcons: Record<string, ReactNode> = {
-  school: <School className="h-5 w-5" />,
-  book: <BookOpen className="h-5 w-5" />,
-  graduation: <GraduationCap className="h-5 w-5" />,
-  building: <Building2 className="h-5 w-5" />,
-  star: <Star className="h-5 w-5" />,
 };
 
 type OrgRow = { id: string; name: string; isDemo: boolean; schools: number };
@@ -428,6 +419,8 @@ export function SuperAdminHome() {
   const [message, setMessage] = useState("");
   const [confirmSchool, setConfirmSchool] = useState<Summary["schoolList"][number] | null>(null);
   const [deleteSchool, setDeleteSchool] = useState<Summary["schoolList"][number] | null>(null);
+  const [deletePhrase, setDeletePhrase] = useState("");
+  const [inviteLink, setInviteLink] = useState<{ email: string; url: string } | null>(null);
   const [createSchoolOpen, setCreateSchoolOpen] = useState(false);
   const [assignAdminOpen, setAssignAdminOpen] = useState(false);
   const [schoolSearch, setSchoolSearch] = useState("");
@@ -446,6 +439,7 @@ export function SuperAdminHome() {
   const [adminForm, setAdminForm] = useState({
     schoolId: "",
     firstName: "",
+    middleName: "",
     lastName: "",
     email: "",
     phone: "",
@@ -503,35 +497,23 @@ export function SuperAdminHome() {
     event.preventDefault();
     setError("");
     try {
-      const creatingOrganization = !schoolForm.organizationId || schoolForm.organizationId === "new";
+      const selectedOrg = orgs.find((org) => org.id === schoolForm.organizationId) ?? orgs[0];
       const created = await api<{ id: string; name: string }>("/api/v1/superadmin/schools", {
         method: "POST",
         body: JSON.stringify({
           name: schoolForm.name,
-          address: schoolForm.address,
+          address: schoolForm.address.trim(),
           type: schoolForm.type,
-          primaryColor: schoolForm.primaryColor,
-          accentColor: schoolForm.accentColor,
-          iconKey: schoolForm.iconKey,
-          ...(creatingOrganization
-            ? { organizationName: schoolForm.organizationName.trim() }
-            : { organizationId: schoolForm.organizationId }),
+          ...(selectedOrg ? { organizationId: selectedOrg.id } : {}),
         }),
       });
       setSchoolForm((current) => ({
         ...current,
-        organizationId: creatingOrganization ? "" : current.organizationId,
-        organizationName: "",
         name: "",
         address: "",
-        primaryColor: "#4f46e5",
-        accentColor: "#10b981",
-        iconKey: "school",
       }));
-      setAdminForm((current) => ({ ...current, schoolId: created.id }));
       setCreateSchoolOpen(false);
-      setAssignAdminOpen(true);
-      setMessage(`${created.name} created. Now assign its administrator.`);
+      setMessage(`${created.name} created.`);
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create school.");
@@ -546,13 +528,14 @@ export function SuperAdminHome() {
         method: "POST",
         body: JSON.stringify({
           firstName: adminForm.firstName,
+          middleName: adminForm.middleName,
           lastName: adminForm.lastName,
           email: adminForm.email,
           phone: adminForm.phone,
         }),
       });
-      setMessage(`Invite for ${invited.email}: ${invited.setPasswordPath}`);
-      setAdminForm((current) => ({ ...current, firstName: "", lastName: "", email: "", phone: "" }));
+      setInviteLink({ email: invited.email, url: `${window.location.origin}${invited.setPasswordPath}` });
+      setAdminForm((current) => ({ ...current, firstName: "", middleName: "", lastName: "", email: "", phone: "" }));
       setAssignAdminOpen(false);
       await load();
     } catch (caught) {
@@ -579,6 +562,23 @@ export function SuperAdminHome() {
   const activeSchools = summary.schoolList.filter((school) => school.isActive).length;
   const typeLabel = (type: string) => type === "PRIMARY_ONLY" ? "Primary" : type === "SECONDARY_ONLY" ? "Secondary" : "Primary & Secondary";
   const typeTone = (type: string) => type === "PRIMARY_ONLY" ? "bg-violet-50 text-violet-700" : type === "SECONDARY_ONLY" ? "bg-fuchsia-50 text-fuchsia-700" : "bg-slate-100 text-slate-700";
+  const selectedOrganization = orgs.find((org) => org.id === schoolForm.organizationId) ?? orgs[0];
+  const organizationLabel = selectedOrganization?.name ?? "Ilays Educational Academy";
+  const deleteNameMatches = deleteSchool ? deletePhrase.trim() === deleteSchool.name : false;
+
+  async function deactivateBeforeDelete() {
+    if (!deleteSchool) return;
+    setError("");
+    try {
+      await api(`/api/v1/superadmin/schools/${deleteSchool.id}/toggle`, { method: "POST" });
+      setDeleteSchool({ ...deleteSchool, isActive: false });
+      setDeletePhrase("");
+      setMessage(`${deleteSchool.name} deactivated. Type its name to delete it.`);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not deactivate school.");
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -676,7 +676,7 @@ export function SuperAdminHome() {
                       ) : null}
                       <button type="button" title="Assign school admin" className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-blue-600 hover:bg-blue-50" onClick={() => { setAdminForm((current) => ({ ...current, schoolId: school.id })); setAssignAdminOpen(true); }}><UserPlus className="h-4 w-4" /></button>
                       <button type="button" title={school.isActive ? "Deactivate school" : "Activate school"} className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" onClick={() => setConfirmSchool(school)}><MoreVertical className="h-4 w-4" /></button>
-                      <button type="button" title="Delete school" className="grid h-8 w-8 place-items-center rounded-lg border border-rose-100 text-rose-500 hover:bg-rose-50" onClick={() => setDeleteSchool(school)}><Trash2 className="h-4 w-4" /></button>
+                      <button type="button" title="Delete school" className="grid h-8 w-8 place-items-center rounded-lg border border-rose-100 text-rose-500 hover:bg-rose-50" onClick={() => { setDeletePhrase(""); setDeleteSchool(school); }}><Trash2 className="h-4 w-4" /></button>
                     </div>
                   </td>
                 </tr>
@@ -695,23 +695,16 @@ export function SuperAdminHome() {
               <div className="flex-1"><h3 className="text-xl font-bold text-slate-950">Create New School</h3><p className="mt-1 text-sm text-slate-500">Add a new school to your organization.</p></div>
               <button type="button" className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100" onClick={() => setCreateSchoolOpen(false)}><X className="h-5 w-5" /></button>
             </div>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Organization *
-                {orgs.length ? (
-                  <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-normal text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" value={schoolForm.organizationId} onChange={(event) => setSchoolForm({ ...schoolForm, organizationId: event.target.value })} required>
-                    {orgs.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
-                    <option value="new">Create new organization</option>
-                  </select>
-                ) : null}
-                {!orgs.length || schoolForm.organizationId === "new" ? (
-                  <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" placeholder="Enter organization name" value={schoolForm.organizationName} onChange={(event) => setSchoolForm({ ...schoolForm, organizationName: event.target.value })} required />
-                ) : null}
-              </label>
-              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">School name *
+            <div className="mt-6 grid gap-4">
+              <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-3 text-sm text-slate-700">
+                <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Organization</p>
+                <p className="mt-1 font-semibold text-slate-900">{organizationLabel}</p>
+              </div>
+              <label className="text-sm font-semibold text-slate-700">School name *
                 <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 px-3 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100"><Building2 className="h-4 w-4 text-blue-500" /><input className="w-full py-3 font-normal outline-none" placeholder="Enter school name" value={schoolForm.name} onChange={(event) => setSchoolForm({ ...schoolForm, name: event.target.value })} required /></div>
               </label>
-              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Address *
-                <div className="mt-2 flex items-start gap-2 rounded-xl border border-slate-200 px-3 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100"><MapPin className="mt-3.5 h-4 w-4 text-slate-400" /><textarea className="min-h-20 w-full resize-none py-3 font-normal outline-none" placeholder="Enter school address" value={schoolForm.address} onChange={(event) => setSchoolForm({ ...schoolForm, address: event.target.value })} required /></div>
+              <label className="text-sm font-semibold text-slate-700">Address
+                <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 px-3 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100"><MapPin className="h-4 w-4 text-slate-400" /><input className="w-full py-3 font-normal outline-none" placeholder="Optional" value={schoolForm.address} onChange={(event) => setSchoolForm({ ...schoolForm, address: event.target.value })} /></div>
               </label>
               <label className="text-sm font-semibold text-slate-700">School level
                 <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-normal text-slate-800" value={schoolForm.type} onChange={(event) => setSchoolForm({ ...schoolForm, type: event.target.value })}>
@@ -720,18 +713,6 @@ export function SuperAdminHome() {
                   <option value="SECONDARY_ONLY">Secondary only</option>
                 </select>
               </label>
-              <div className="text-sm font-semibold text-slate-700">School colors
-                <div className="mt-2 flex gap-2">
-                  <label className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><input type="color" className="h-7 w-7" value={schoolForm.primaryColor} onChange={(event) => setSchoolForm({ ...schoolForm, primaryColor: event.target.value })} />Primary</label>
-                  <label className="flex flex-1 items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-normal"><input type="color" className="h-7 w-7" value={schoolForm.accentColor} onChange={(event) => setSchoolForm({ ...schoolForm, accentColor: event.target.value })} />Accent</label>
-                </div>
-              </div>
-              <div className="sm:col-span-2">
-                <p className="text-sm font-semibold text-slate-700">School icon</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {Object.entries(schoolIcons).map(([key, icon]) => <button key={key} type="button" aria-label={key} className={`grid h-10 w-10 place-items-center rounded-xl border ${schoolForm.iconKey === key ? "border-blue-500 bg-blue-50 text-blue-600 ring-2 ring-blue-100" : "border-slate-200 text-slate-500"}`} onClick={() => setSchoolForm({ ...schoolForm, iconKey: key })}>{icon}</button>)}
-                </div>
-              </div>
             </div>
             <div className="mt-6 flex justify-end gap-2">
               <button type="button" className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700" onClick={() => setCreateSchoolOpen(false)}>Cancel</button>
@@ -754,7 +735,8 @@ export function SuperAdminHome() {
                 <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-normal text-slate-800" value={adminForm.schoolId} onChange={(event) => setAdminForm({ ...adminForm, schoolId: event.target.value })} required>{summary.schoolList.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}</select>
               </label>
               <label className="text-sm font-semibold text-slate-700">First name<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={adminForm.firstName} onChange={(event) => setAdminForm({ ...adminForm, firstName: event.target.value })} required /></label>
-              <label className="text-sm font-semibold text-slate-700">Last name<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={adminForm.lastName} onChange={(event) => setAdminForm({ ...adminForm, lastName: event.target.value })} required /></label>
+              <label className="text-sm font-semibold text-slate-700">Middle name<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={adminForm.middleName} onChange={(event) => setAdminForm({ ...adminForm, middleName: event.target.value })} required /></label>
+              <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Last name<input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-blue-400" value={adminForm.lastName} onChange={(event) => setAdminForm({ ...adminForm, lastName: event.target.value })} required /></label>
               <label className="text-sm font-semibold text-slate-700 sm:col-span-2">Email
                 <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 px-3 focus-within:border-blue-400"><Mail className="h-4 w-4 text-slate-400" /><input type="email" className="w-full py-3 font-normal outline-none" placeholder="admin@school.com" value={adminForm.email} onChange={(event) => setAdminForm({ ...adminForm, email: event.target.value })} required /></div>
               </label>
@@ -762,7 +744,7 @@ export function SuperAdminHome() {
                 <div className="mt-2 flex items-center gap-2 rounded-xl border border-slate-200 px-3 focus-within:border-blue-400"><Phone className="h-4 w-4 text-slate-400" /><input className="w-full py-3 font-normal outline-none" placeholder="+252..." value={adminForm.phone} onChange={(event) => setAdminForm({ ...adminForm, phone: event.target.value })} required /></div>
               </label>
             </div>
-            <div className="mt-6 flex justify-end gap-2"><button type="button" className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700" onClick={() => setAssignAdminOpen(false)}>Skip for now</button><button className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white"><UserPlus className="h-4 w-4" /> Assign Admin</button></div>
+            <div className="mt-6 flex justify-end gap-2"><button type="button" className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700" onClick={() => setAssignAdminOpen(false)}>Cancel</button><button className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white"><UserPlus className="h-4 w-4" /> Assign Admin</button></div>
           </form>
         </div>
       ) : null}
@@ -804,16 +786,43 @@ export function SuperAdminHome() {
               <Trash2 className="h-6 w-6" />
             </div>
             <h3 className="mt-4 text-lg font-semibold text-slate-900">Delete {deleteSchool.name}?</h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              This permanently deletes the school. A school containing users, students, staff, academic data, or transfer records cannot be deleted; deactivate it instead.
-            </p>
+            {deleteSchool.isActive ? (
+              <>
+                <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-medium leading-6 text-rose-800">
+                  This school is still active. Deactivate it before it can be deleted. Deactivation locks students, teachers, and staff out of the school.
+                </p>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button type="button" className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700" onClick={() => setDeleteSchool(null)}>Cancel</button>
+                  <button type="button" className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-500" onClick={() => void deactivateBeforeDelete()}>Deactivate first</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-sm font-medium leading-6 text-rose-800">
+                  This permanently deletes {deleteSchool.name}. The school cannot be restored. A school that still has students, staff, or academic records cannot be deleted.
+                </p>
+                <label className="mt-4 block text-sm font-semibold text-slate-700">Type the school name to confirm
+                  <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-3 font-normal outline-none focus:border-rose-400" value={deletePhrase} placeholder={deleteSchool.name} onChange={(event) => setDeletePhrase(event.target.value)} autoComplete="off" />
+                </label>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button type="button" className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700" onClick={() => { setDeleteSchool(null); setDeletePhrase(""); }}>Cancel</button>
+                  <button type="button" className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:bg-rose-300" disabled={!deleteNameMatches} onClick={() => void confirmDeleteSchool()}>Delete permanently</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {inviteLink ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-slate-900">Share the password link</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Send this link to {inviteLink.email}. They open it and choose a new password.</p>
+            <p className="mt-4 break-all rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-800">{inviteLink.url}</p>
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700" onClick={() => setDeleteSchool(null)}>
-                Cancel
-              </button>
-              <button type="button" className="rounded-lg bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-500" onClick={() => void confirmDeleteSchool()}>
-                Delete permanently
-              </button>
+              <button type="button" className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700" onClick={() => setInviteLink(null)}>Close</button>
+              <button type="button" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white" onClick={() => { void navigator.clipboard.writeText(inviteLink.url); setMessage("Password link copied."); }}>Copy link</button>
             </div>
           </div>
         </div>

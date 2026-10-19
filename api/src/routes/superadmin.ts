@@ -19,7 +19,7 @@ const schoolSchema = z.object({
   organizationName: z.string().trim().min(2).max(120).optional(),
   name: z.string().trim().min(2).max(120),
   type: z.enum(["PRIMARY_ONLY", "SECONDARY_ONLY", "PRIMARY_AND_SECONDARY"]),
-  address: z.string().trim().min(2).max(240),
+  address: z.string().trim().max(240).optional().or(z.literal("")),
   primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   accentColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   iconKey: z.enum(["school", "book", "graduation", "building", "star"]).optional(),
@@ -27,8 +27,9 @@ const schoolSchema = z.object({
 });
 
 const adminSchema = z.object({
-  firstName: z.string().trim().min(2),
-  lastName: z.string().trim().min(2),
+  firstName: z.string().trim().min(2).max(80),
+  middleName: z.string().trim().min(2).max(80),
+  lastName: z.string().trim().min(2).max(80),
   email: z.string().email(),
   phone: z.string().trim().min(5).max(30),
 });
@@ -176,14 +177,21 @@ superadminRouter.post("/superadmin/organizations", async (req, res, next) => {
 superadminRouter.post("/superadmin/schools", async (req, res, next) => {
   try {
     const body = schoolSchema.safeParse(req.body);
-    if (!body.success) throw new HttpError(400, "School name, address, level, and organization are required.");
+    if (!body.success) throw new HttpError(400, "School name is required.");
     let organizationId = body.data.organizationId;
     if (!organizationId) {
-      if (!body.data.organizationName) throw new HttpError(400, "Choose an organization or create a new one.");
-      const org = await prisma.organization.create({
-        data: { name: body.data.organizationName, isDemo: body.data.isDemo ?? false },
-      });
-      organizationId = org.id;
+      const named = body.data.organizationName?.trim();
+      const existing = named
+        ? null
+        : await prisma.organization.findFirst({ orderBy: { createdAt: "asc" } });
+      if (existing) {
+        organizationId = existing.id;
+      } else {
+        const org = await prisma.organization.create({
+          data: { name: named || "Ilays Educational Academy", isDemo: body.data.isDemo ?? false },
+        });
+        organizationId = org.id;
+      }
     } else {
       const org = await prisma.organization.findUnique({ where: { id: organizationId } });
       if (!org) throw new HttpError(404, "Organization was not found.");
@@ -196,7 +204,7 @@ superadminRouter.post("/superadmin/schools", async (req, res, next) => {
           name: body.data.name,
           code,
           type: body.data.type,
-          address: body.data.address,
+          address: body.data.address?.trim() || null,
           primaryColor: body.data.primaryColor ?? "#4f46e5",
           accentColor: body.data.accentColor ?? "#10b981",
           iconKey: body.data.iconKey ?? "school",
@@ -245,6 +253,7 @@ superadminRouter.delete("/superadmin/schools/:id", async (req, res, next) => {
   try {
     const school = await prisma.school.findUnique({ where: { id: String(req.params.id) } });
     if (!school) throw new HttpError(404, "School was not found.");
+    if (school.isActive) throw new HttpError(400, "Deactivate the school before deleting it.");
     const [users, academicYears, enrollments, staff, announcements, transfers, documents, alumni, fees, exams, assignments] = await Promise.all([
       prisma.user.count({ where: { schoolId: school.id } }),
       prisma.academicYear.count({ where: { schoolId: school.id } }),
@@ -281,7 +290,7 @@ superadminRouter.delete("/superadmin/schools/:id", async (req, res, next) => {
 superadminRouter.post("/superadmin/schools/:id/admins", async (req, res, next) => {
   try {
     const body = adminSchema.safeParse(req.body);
-    if (!body.success) throw new HttpError(400, "Admin name, email, and phone are required.");
+    if (!body.success) throw new HttpError(400, "The admin's three names, phone number, and email are required.");
     const school = await prisma.school.findUnique({ where: { id: String(req.params.id) } });
     if (!school) throw new HttpError(404, "School was not found.");
     const email = body.data.email.toLowerCase();
@@ -295,7 +304,7 @@ superadminRouter.post("/superadmin/schools/:id/admins", async (req, res, next) =
           role: "SCHOOL_ADMIN",
           status: "INVITED",
           firstName: body.data.firstName,
-          lastName: body.data.lastName,
+          lastName: `${body.data.middleName} ${body.data.lastName}`,
           phone: body.data.phone,
           schoolId: school.id,
           isDemo: false,
