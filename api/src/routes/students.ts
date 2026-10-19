@@ -8,6 +8,8 @@ import { issueSetPasswordLink } from "../lib/accountLink.js";
 import { writeAudit } from "../lib/audit.js";
 import { absoluteStoragePath } from "../lib/files.js";
 import { loadExaminations, type PublishedMark } from "../lib/examAverages.js";
+import { importStudentRows } from "../lib/studentImport.js";
+import { readStudentSheet, writeStudentWorkbook } from "../lib/studentSheet.js";
 import { levelLabel } from "../lib/levels.js";
 import { assertPhotoSize, detectImage, guardianPhotoPath, storeStudentPhoto, studentPhotoPath } from "../lib/photos.js";
 import { prisma } from "../lib/prisma.js";
@@ -17,6 +19,11 @@ import { HttpError } from "../middleware/error.js";
 const photoUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+});
+
+const sheetUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
 });
 
 const guardianInput = z.object({
@@ -273,6 +280,124 @@ studentsRouter.get("/students", async (req, res, next) => {
     next(error);
   }
 });
+
+studentsRouter.get("/students/export", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const academicYearId = String(req.query.academicYearId ?? "").trim();
+    if (!academicYearId) throw new HttpError(400, "Choose an academic year before exporting.");
+    const classGroupId = String(req.query.classGroupId ?? "").trim();
+    const sectionId = String(req.query.sectionId ?? "").trim();
+    const enrollmentWhere: Prisma.EnrollmentWhereInput = {
+      schoolId: school.id,
+      academicYearId,
+      ...(classGroupId ? { classGroupId } : {}),
+      ...(sectionId ? { sectionId } : {}),
+      status: { in: ["ACTIVE", "TRANSFERRED", "RETAINED"] },
+    };
+    const students = await prisma.student.findMany({
+      where: { enrollments: { some: enrollmentWhere } },
+      orderBy: [{ firstName: "asc" }, { fatherName: "asc" }],
+      include: {
+        previousSchool: { select: { name: true } },
+        guardians: { include: { guardian: true }, take: 1 },
+        enrollments: {
+          where: enrollmentWhere,
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          include: { academicYear: true, classGroup: true, section: true },
+        },
+      },
+    });
+    const buffer = await writeStudentWorkbook(students.map((student) => {
+      const enrollment = student.enrollments[0];
+      const guardian = student.guardians[0]?.guardian;
+      return {
+        studentId: student.secondaryPermanentId ?? student.permanentId,
+        rollNumber: enrollment?.rollNumber ?? "",
+        firstName: student.firstName,
+        fatherName: student.fatherName,
+        grandfatherName: student.grandfatherName,
+        gender: student.gender,
+        dateOfBirth: student.dateOfBirth.toISOString().slice(0, 10),
+        phone: student.phone ?? "",
+        nationalId: student.nationalId ?? "",
+        academicYear: enrollment?.academicYear.name ?? "",
+        className: enrollment ? levelLabel(enrollment.classGroup.level) : "",
+        section: enrollment?.section.name ?? "",
+        status: enrollment?.status ?? student.status,
+        parentName: guardian ? `${guardian.firstName} ${guardian.lastName}` : "",
+        parentPhone: guardian?.phone ?? "",
+        parentEmail: guardian?.email ?? "",
+        previousSchool: student.previousSchool?.name ?? "",
+        previousClass: student.previousClass ?? "",
+        leavingYear: student.leavingYear ?? "",
+        transferCertificate: student.transferCertificateNo ?? "",
+      };
+    }), await placementGuide(school.id));
+    sendWorkbook(res, buffer, "students.xlsx");
+  } catch (error) {
+    next(error);
+  }
+});
+
+studentsRouter.get("/students/import-template", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const buffer = await writeStudentWorkbook([], await placementGuide(school.id));
+    sendWorkbook(res, buffer, "student-import-template.xlsx");
+  } catch (error) {
+    next(error);
+  }
+});
+
+studentsRouter.post("/students/import", sheetUpload.single("file"), async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    if (!req.file) throw new HttpError(400, "Choose an Excel or CSV file.");
+    const filename = req.file.originalname || "students.xlsx";
+    if (!/\.(xlsx|csv)$/i.test(filename)) throw new HttpError(400, "Upload an Excel (.xlsx) or CSV file.");
+    let rows;
+    try {
+      rows = await readStudentSheet(req.file.buffer, filename);
+    } catch (error) {
+      throw new HttpError(400, error instanceof Error ? error.message : "Could not read this file. Use the template.");
+    }
+    if (!rows.length) throw new HttpError(400, "The file has no students to import.");
+    const result = await importStudentRows(school, rows);
+    if (result.created) {
+      await writeAudit({
+        schoolId: school.id,
+        actorUserId: req.authUser!.id,
+        action: "STUDENT_IMPORT",
+        entityType: "Student",
+        summary: `Imported ${result.created} students. ${result.skipped.length} rows were skipped.`,
+      });
+    }
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
+});
+
+function sendWorkbook(res: import("express").Response, buffer: Buffer, filename: string) {
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
+}
+
+async function placementGuide(schoolId: string) {
+  const years = await prisma.academicYear.findMany({
+    where: { schoolId },
+    orderBy: { startDate: "desc" },
+    include: { classes: { include: { sections: { orderBy: { name: "asc" } } } } },
+  });
+  return years.flatMap((year) => year.classes.flatMap((group) => group.sections.map((section) => ({
+    year: year.name,
+    className: levelLabel(group.level),
+    section: section.name,
+  }))));
+}
 
 function yearOutcome(status: string) {
   if (status === "RETAINED") return { code: "RETAINED", label: "Retained", detail: "The Term 2 average was below 50%, so this student repeated this class." };
