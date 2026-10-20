@@ -261,8 +261,11 @@ attendanceRouter.get("/attendance-sheet", requireAuth, requireRole("TEACHER", "S
     const sectionId = String(req.query.sectionId ?? "");
     const date = String(req.query.date ?? "");
     const session = String(req.query.session ?? "");
-    if (!z.string().date().safeParse(date).success || (session !== "MORNING" && session !== "AFTERNOON")) {
-      throw new HttpError(400, "Choose a date and Morning or Afternoon.");
+    if (!z.string().date().safeParse(date).success) {
+      throw new HttpError(400, "Choose a date.");
+    }
+    if (session && session !== "MORNING" && session !== "AFTERNOON") {
+      throw new HttpError(400, "Choose Morning or Afternoon.");
     }
     const section = await assertSectionAccess(req.authUser!.id, req.authUser!.role, sectionId);
     const enrollments = await prisma.enrollment.findMany({

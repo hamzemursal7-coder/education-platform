@@ -84,7 +84,7 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [session, setSession] = useState<"MORNING" | "AFTERNOON" | "">("");
   const [dayStatus, setDayStatus] = useState<DayStatus | null>(null);
-  const [opened, setOpened] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [sheet, setSheet] = useState<Sheet | null>(null);
@@ -123,33 +123,40 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   }, [setupReady, sectionId, date]);
 
   useEffect(() => {
-    if (!opened || !sectionId || !session) return;
-    api<Sheet>(`/api/v1/attendance-sheet?sectionId=${sectionId}&date=${date}&session=${session}`)
+    if (!sectionId || !date) {
+      setSheet(null);
+      setRows([]);
+      return;
+    }
+    const sessionQuery = session ? `&session=${session}` : "";
+    api<Sheet>(`/api/v1/attendance-sheet?sectionId=${sectionId}&date=${date}${sessionQuery}`)
       .then((data) => {
-        const draftRaw = localStorage.getItem(draftKey(sectionId, date, session));
-        if (draftRaw) {
-          try {
-            const draft = JSON.parse(draftRaw) as Sheet["rows"];
-            if (Array.isArray(draft) && draft.length) {
-              setSheet(data);
-              setRows(draft);
-              setEditing(true);
-              setDirty(true);
-              setSaved("Draft restored on this device.");
-              return;
+        if (session) {
+          const draftRaw = localStorage.getItem(draftKey(sectionId, date, session));
+          if (draftRaw) {
+            try {
+              const draft = JSON.parse(draftRaw) as Sheet["rows"];
+              if (Array.isArray(draft) && draft.length) {
+                setSheet(data);
+                setRows(draft);
+                setEditing(true);
+                setDirty(true);
+                setSaved("Draft restored on this device.");
+                return;
+              }
+            } catch {
+              /* ignore bad draft */
             }
-          } catch {
-            /* ignore bad draft */
           }
         }
-        const hasSaved = data.rows.some((row) => row.status);
+        const hasSaved = Boolean(session) && data.rows.some((row) => row.status);
         setSheet(data);
         setRows(data.rows);
         setEditing(!hasSaved);
         setDirty(false);
       })
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load the sheet."));
-  }, [opened, sectionId, date, session]);
+  }, [sectionId, date, session, reloadKey]);
 
   useEffect(() => {
     if (view !== "month" || !adminMode) return;
@@ -179,8 +186,8 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   }), [rows]);
 
   const visibleRows = rows.filter((row) => `${row.student} ${row.permanentId} ${row.rollNumber}`.toLowerCase().includes(studentQuery.trim().toLowerCase()));
-  const locked = opened && !editing;
-  const canOpen = setupReady && (session === "MORNING" || session === "AFTERNOON");
+  const locked = Boolean(session) && !editing;
+  const canMark = Boolean(session) && !locked;
 
   function markDirty(next: Sheet["rows"]) {
     setRows(next);
@@ -189,49 +196,31 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   }
 
   function setStatus(enrollmentId: string, status: Sheet["rows"][number]["status"]) {
-    if (locked) return;
+    if (!canMark) return;
     markDirty(rows.map((row) => (row.enrollmentId === enrollmentId ? { ...row, status, note: status === "ABSENT" || status === "EXCUSED" ? row.note : "" } : row)));
   }
 
   function setNote(enrollmentId: string, note: string) {
-    if (locked) return;
+    if (!canMark) return;
     markDirty(rows.map((row) => (row.enrollmentId === enrollmentId ? { ...row, note } : row)));
   }
 
   function markAllPresent() {
-    if (locked) return;
+    if (!canMark) return;
     markDirty(rows.map((row) => ({ ...row, status: "PRESENT", note: "" })));
   }
 
   function clearAll() {
-    if (locked) return;
+    if (!canMark) return;
     markDirty(rows.map((row) => ({ ...row, status: null, note: "" })));
   }
 
-  function confirmLeave() {
-    if (!dirty) return true;
-    return window.confirm("Attendance is not saved. Leave and keep a draft, or stay and save?");
-  }
-
-  function leaveSheet(keepDraft: boolean) {
-    if (dirty && keepDraft && sectionId && session) {
-      localStorage.setItem(draftKey(sectionId, date, session), JSON.stringify(rows));
-      setSaved("Draft saved on this device.");
-    } else if (!keepDraft && sectionId && session) {
-      localStorage.removeItem(draftKey(sectionId, date, session));
-    }
-    setOpened(false);
-    setEditing(false);
-    setDirty(false);
-    setSheet(null);
-    setRows([]);
-    setSession("");
-  }
-
   function cancel() {
-    if (dirty && !window.confirm("Leave without submitting? You can save a draft first.")) return;
-    if (dirty) leaveSheet(true);
-    else leaveSheet(false);
+    if (dirty && !window.confirm("Discard unsaved attendance marks?")) return;
+    if (sectionId && session) localStorage.removeItem(draftKey(sectionId, date, session));
+    setDirty(false);
+    setSaved("");
+    setReloadKey((current) => current + 1);
   }
 
   function saveDraft() {
@@ -271,15 +260,6 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not submit attendance.");
     }
-  }
-
-  function openSheet() {
-    if (!canOpen) {
-      setError("Choose class, section, and Morning or Afternoon before opening attendance.");
-      return;
-    }
-    setError("");
-    setOpened(true);
   }
 
   function sessionHint(value: "MORNING" | "AFTERNOON") {
@@ -361,97 +341,12 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
     );
   }
 
-  if (opened && sheet) {
-    return (
-      <div className="mx-auto w-full max-w-xl space-y-4 pb-28">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-950">Student Attendance</h2>
-            <p className="mt-1 text-sm text-slate-500">{sheet.level} · Section {sheet.section} · {session === "MORNING" ? "Morning Session" : "Afternoon Session"}</p>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            {locked ? (
-              <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button>
-            ) : null}
-            <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={cancel}>Back</button>
-          </div>
-        </div>
-
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          <label className="flex min-w-[12rem] flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3">
-            <Search className="h-4 w-4 shrink-0 text-slate-400" />
-            <input className="w-full bg-transparent py-2.5 text-sm outline-none" placeholder="Search..." value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)} />
-          </label>
-          <button type="button" disabled={locked} className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}>All present</button>
-          <button type="button" disabled={locked} className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50" onClick={clearAll}>Clear</button>
-        </div>
-
-        {locked ? <p className="rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-600">Locked. Tap Edit to change attendance.</p> : null}
-
-        <div className="space-y-3">
-          {visibleRows.map((row) => (
-            <article key={row.enrollmentId} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-              <p className="text-base font-bold text-slate-950">{row.student}</p>
-              <p className="mt-0.5 text-sm text-slate-500">{row.permanentId}</p>
-              <div className="mt-4 grid grid-cols-4 gap-2">
-                {statuses.map((item) => {
-                  const active = row.status === item.value;
-                  return (
-                    <button
-                      key={item.value}
-                      type="button"
-                      disabled={locked}
-                      onClick={() => setStatus(row.enrollmentId, item.value)}
-                      className="flex flex-col items-center gap-1.5 disabled:opacity-60"
-                    >
-                      <span className={`grid h-11 w-11 place-items-center rounded-full border-2 ${active ? item.ring : "border-slate-200 bg-white text-transparent"}`}>
-                        {active ? <Check className="h-5 w-5" strokeWidth={3} /> : null}
-                      </span>
-                      <span className={`text-[11px] font-semibold ${active ? item.text : "text-slate-400"}`}>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {row.status === "ABSENT" || row.status === "EXCUSED" ? (
-                <input
-                  className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm disabled:bg-slate-50"
-                  maxLength={200}
-                  disabled={locked}
-                  placeholder={row.status === "ABSENT" ? "Absent reason (optional)" : "Excuse reason (optional)"}
-                  value={row.note}
-                  onChange={(event) => setNote(row.enrollmentId, event.target.value)}
-                />
-              ) : null}
-            </article>
-          ))}
-          {!visibleRows.length ? <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">No students match this search.</p> : null}
-        </div>
-
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-6">
-          <div className="mx-auto flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-center text-xs text-slate-500 sm:text-left">{dirty ? "Save draft or submit before leaving." : `Present ${counts.present} · Absent ${counts.absent} · Late ${counts.late} · Excused ${counts.excused}`}</p>
-            {sheet.currentYear ? (
-              <div className="grid grid-cols-3 gap-2 sm:flex">
-                <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700" onClick={cancel}>Cancel</button>
-                <button type="button" disabled={locked} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" onClick={saveDraft}>Draft</button>
-                <button type="button" disabled={locked} className="inline-flex items-center justify-center gap-1 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submit()}><Send className="h-4 w-4" />Submit</button>
-              </div>
-            ) : <p className="text-sm text-amber-700">Only the current academic year can be marked.</p>}
-          </div>
-        </div>
-
-        {saved ? <p className="text-sm text-blue-700">{saved}</p> : null}
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-950">Take attendance</h2>
-          <p className="text-sm text-slate-500">Choose class and section, then Morning or Afternoon. The student list opens after Take attendance.</p>
+          <p className="text-sm text-slate-500">Choose class and section to see the students. Choose Morning or Afternoon before marking.</p>
         </div>
         {adminMode ? (
           <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => setView("month")}>Monthly report</button>
@@ -494,10 +389,7 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
           </select>
         </Field>
         <Field label="Date">
-          <input className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" type="date" value={date} onChange={(event) => {
-            setDate(event.target.value);
-            setSession("");
-          }} />
+          <input className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </Field>
       </div>
 
@@ -524,11 +416,63 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">Choose Class / Form and Section first. Then Morning or Afternoon will appear.</p>
       )}
 
-      {setupReady && !session ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">Choose Morning or Afternoon, then tap Take attendance.</p> : null}
+      {setupReady && !session ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">The student list is ready. Choose Morning or Afternoon before marking attendance.</p> : null}
 
-      <button type="button" disabled={!canOpen} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:self-end" onClick={openSheet}>
-        Take attendance
-      </button>
+      {setupReady && sheet ? (
+        <section className="space-y-3 pb-28">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-lg font-bold text-slate-950">Student Attendance</h3>
+              <p className="text-sm text-slate-500">{sheet.level} · Section {sheet.section}{session ? ` · ${session === "MORNING" ? "Morning Session" : "Afternoon Session"}` : ""}</p>
+            </div>
+            <div className="flex gap-2">
+              {locked ? <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button> : null}
+              <button type="button" disabled={!canMark} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}>All present</button>
+            </div>
+          </div>
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input className="w-full bg-transparent py-2.5 text-sm outline-none" placeholder="Search name, ID, or roll" value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)} />
+          </label>
+          {visibleRows.map((row) => (
+            <article key={row.enrollmentId} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-base font-bold text-slate-950">{row.student}</p>
+                  <p className="mt-0.5 text-sm text-slate-500">{row.permanentId}</p>
+                </div>
+                <p className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">Roll {String(row.rollNumber).padStart(2, "0")}</p>
+              </div>
+              <div className={`mt-4 grid grid-cols-4 gap-2 ${canMark ? "" : "pointer-events-none opacity-50"}`}>
+                {statuses.map((item) => {
+                  const active = row.status === item.value;
+                  return (
+                    <button key={item.value} type="button" disabled={!canMark} onClick={() => setStatus(row.enrollmentId, item.value)} className="flex flex-col items-center gap-1.5">
+                      <span className={`grid h-11 w-11 place-items-center rounded-full border-2 ${active ? item.ring : "border-slate-200 bg-white text-transparent"}`}>
+                        {active ? <Check className="h-5 w-5" strokeWidth={3} /> : null}
+                      </span>
+                      <span className={`text-[11px] font-semibold ${active ? item.text : "text-slate-400"}`}>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {canMark && (row.status === "ABSENT" || row.status === "EXCUSED") ? (
+                <input className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" maxLength={200} placeholder={row.status === "ABSENT" ? "Absent reason (optional)" : "Excuse reason (optional)"} value={row.note} onChange={(event) => setNote(row.enrollmentId, event.target.value)} />
+              ) : null}
+            </article>
+          ))}
+          {!visibleRows.length ? <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">No students in this section.</p> : null}
+          {session && sheet.currentYear ? (
+            <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur">
+              <div className="mx-auto grid w-full max-w-3xl grid-cols-3 gap-2">
+                <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700" onClick={cancel}>Cancel</button>
+                <button type="button" disabled={!canMark} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" onClick={saveDraft}>Draft</button>
+                <button type="button" disabled={!canMark} className="inline-flex items-center justify-center gap-1 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submit()}><Send className="h-4 w-4" />Submit</button>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {saved ? <p className="text-sm text-blue-700">{saved}</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
