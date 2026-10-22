@@ -83,7 +83,7 @@ function draftKey(sectionId: string, date: string, session: string) {
   return `emp_attendance_draft:${sectionId}:${date}:${session}`;
 }
 
-export function AttendancePage({ adminMode = false, initialView = "take", filterYearId, filterClassId, filterSectionId }: { adminMode?: boolean; initialView?: "take" | "month"; filterYearId?: string; filterClassId?: string; filterSectionId?: string }) {
+export function AttendancePage({ adminMode = false, initialView = "take", lockView = false, filterYearId, filterClassId, filterSectionId }: { adminMode?: boolean; initialView?: "take" | "month"; lockView?: boolean; filterYearId?: string; filterClassId?: string; filterSectionId?: string }) {
   const [options, setOptions] = useState<Options | null>(null);
   const [schoolId, setSchoolId] = useState("");
   const [classId, setClassId] = useState("");
@@ -364,7 +364,7 @@ export function AttendancePage({ adminMode = false, initialView = "take", filter
             <h2 className="text-2xl font-bold text-slate-950">Monthly attendance</h2>
             <p className="text-sm text-slate-500">Choose the academic year, Class / Form, and one section. Each section shows only its own students.</p>
           </div>
-          <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => setView("take")}>Take attendance</button>
+          {lockView ? null : <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => setView("take")}>Take attendance</button>}
         </div>
         <div className={`grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${controlledMonth ? "md:grid-cols-2" : "md:grid-cols-3 lg:grid-cols-5"}`}>
           {controlledMonth ? null : (
@@ -430,7 +430,7 @@ export function AttendancePage({ adminMode = false, initialView = "take", filter
           <h2 className="text-2xl font-bold text-slate-950">Take attendance</h2>
           <p className="text-sm text-slate-500">Choose class and section to see the students. Choose Morning or Afternoon before marking.</p>
         </div>
-        {adminMode ? (
+        {adminMode && !lockView ? (
           <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => setView("month")}>Monthly report</button>
         ) : null}
       </div>

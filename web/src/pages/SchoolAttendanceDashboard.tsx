@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { X } from "lucide-react";
 import { api } from "../lib/api";
 import { AttendancePage } from "./AttendancePage";
 
@@ -69,7 +70,9 @@ type DayRow = {
   note: string;
 };
 
-const tabs = ["Take attendance", "Students", "Daily Records", "Monthly Summary", "Excused Students", "Reports"] as const;
+const attendanceTabs = ["Take attendance", "Students", "Daily Records"] as const;
+const reportTabs = ["Monthly report"] as const;
+type AttendanceTab = (typeof attendanceTabs)[number] | (typeof reportTabs)[number] | "Excused Students";
 
 export function SchoolAttendanceDashboard() {
   const [data, setData] = useState<Dashboard | null>(null);
@@ -82,7 +85,7 @@ export function SchoolAttendanceDashboard() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("ALL");
   const [page, setPage] = useState(1);
-  const [tab, setTab] = useState<(typeof tabs)[number]>("Take attendance");
+  const [tab, setTab] = useState<AttendanceTab>("Take attendance");
   const [session, setSession] = useState<"MORNING" | "AFTERNOON">("MORNING");
   const [daily, setDaily] = useState<DayRow[]>([]);
   const [excused, setExcused] = useState<Excused[]>([]);
@@ -123,8 +126,14 @@ export function SchoolAttendanceDashboard() {
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load the day."));
   }, [tab, sectionId, to, session]);
 
+  const showExcused = Boolean(sectionId && (data?.summary.excused ?? 0) > 0);
+
   useEffect(() => {
-    if (tab !== "Excused Students" && tab !== "Reports") return;
+    if (tab === "Excused Students" && !showExcused) setTab("Take attendance");
+  }, [tab, showExcused]);
+
+  useEffect(() => {
+    if (tab !== "Excused Students" || !sectionId) return;
     const params = new URLSearchParams({ from: data?.filters.from ?? from, to: data?.filters.to ?? to, sectionId });
     api<Excused[]>(`/api/v1/attendance/excused?${params.toString()}`)
       .then(setExcused)
@@ -132,17 +141,6 @@ export function SchoolAttendanceDashboard() {
   }, [tab, sectionId, data?.filters.from, data?.filters.to]);
 
   const selectedClass = data?.classes.find((item) => item.id === classId);
-
-  function exportCsv() {
-    const rows = tab === "Excused Students"
-      ? [["Student", "ID", "Class", "Section", "Date", "Session", "Reason", "Teacher", "Created", "Updated"], ...excused.map((row) => [row.student, row.permanentId, row.level, row.section, row.date, row.session, row.note, row.teacher, row.createdAt, row.updatedAt])]
-      : [["ID", "Roll", "Name", "Class", "Section", "Present", "Absent", "Late", "Excused", "Recorded", "Percent", "Status", "Reason"], ...(data?.students ?? []).map((row) => [row.permanentId, row.rollNumber, row.name, row.level, row.section, row.present, row.absent, row.late, row.excused, row.recorded, row.percent ?? "", row.status, row.reason])];
-    const blob = new Blob([rows.map((row) => row.map((cell) => `"${String(cell).replaceAll("\"", "\"\"")}"`).join(",")).join("\n")], { type: "text/csv" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = "attendance.csv";
-    link.click();
-  }
 
   async function correct(row: Excused) {
     const statusValue = window.prompt("Status: PRESENT, ABSENT, LATE, or EXCUSED", row.status);
@@ -194,24 +192,30 @@ export function SchoolAttendanceDashboard() {
 
       {data ? (
         <>
-          {sectionId ? (
+          {tab !== "Take attendance" && sectionId ? (
           <>
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             <Card label="Total Students" value={data.summary.students} detail="Enrolled in the filter" tone="text-slate-900" />
             <Card label="Present" value={data.summary.present} detail={`${data.summary.presentPercent}% of recorded`} tone="text-emerald-700" />
             <Card label="Absent" value={data.summary.absent} detail={`${data.summary.absentPercent}% of recorded`} tone="text-rose-700" />
             <Card label="Late" value={data.summary.late} detail={`${data.summary.latePercent}% of recorded`} tone="text-amber-700" />
             <Card label="Excused" value={data.summary.excused} detail={`${data.summary.excusedPercent}% of recorded`} tone="text-violet-700" />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid gap-3 lg:grid-cols-3">
             <Chart title="Attendance trend">
-              {data.trend.length ? data.trend.map((row) => (
-                <div key={row.date} className="flex items-center gap-2 text-xs">
-                  <span className="w-20 text-slate-500">{row.date.slice(5)}</span>
-                  <span className="h-2 rounded bg-emerald-500" style={{ width: `${row.present * 8}px` }} />
-                  <span className="text-slate-500">{row.present + row.absent + row.late + row.excused}</span>
-                </div>
-              )) : <Empty />}
+              {data.trend.length ? data.trend.map((row) => {
+                const total = row.present + row.absent + row.late + row.excused;
+                const peak = Math.max(1, ...data.trend.map((item) => item.present + item.absent + item.late + item.excused));
+                return (
+                  <div key={row.date} className="flex items-center gap-2 text-xs">
+                    <span className="w-12 shrink-0 text-slate-500">{row.date.slice(5)}</span>
+                    <span className="h-2 min-w-0 flex-1 overflow-hidden rounded bg-slate-100">
+                      <span className="block h-2 rounded bg-emerald-500" style={{ width: `${(total / peak) * 100}%` }} />
+                    </span>
+                    <span className="w-8 shrink-0 text-right text-slate-500">{total}</span>
+                  </div>
+                );
+              }) : <Empty />}
             </Chart>
             <Chart title="Attendance distribution">
               <Bar label="Present" value={data.summary.present} total={data.summary.recorded} color="bg-emerald-500" />
@@ -225,18 +229,28 @@ export function SchoolAttendanceDashboard() {
             </Chart>
           </div>
           </>
-          ) : (
+          ) : tab !== "Take attendance" ? (
             <p className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">Choose academic year, Class / Form, and Section. Each section shows only its own attendance.</p>
-          )}
+          ) : null}
 
-          <div className="flex gap-2 border-b border-slate-200">
-            {tabs.map((item) => (
-              <button key={item} type="button" className={`border-b-2 px-3 py-2 text-sm font-semibold ${tab === item ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500"}`} onClick={() => setTab(item)}>{item}</button>
-            ))}
+          <div className="flex flex-wrap items-end gap-x-8 gap-y-2 border-b border-slate-200">
+            <div className="flex gap-1">
+              {attendanceTabs.map((item) => (
+                <button key={item} type="button" className={`border-b-2 px-3 py-2 text-sm font-semibold ${tab === item ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500"}`} onClick={() => setTab(item)}>{item}</button>
+              ))}
+            </div>
+            <div className="flex gap-1 border-l border-slate-200 pl-6">
+              {reportTabs.map((item) => (
+                <button key={item} type="button" className={`border-b-2 px-3 py-2 text-sm font-semibold ${tab === item ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500"}`} onClick={() => setTab(item)}>{item}</button>
+              ))}
+              {showExcused ? (
+                <button type="button" className={`border-b-2 px-3 py-2 text-sm font-semibold ${tab === "Excused Students" ? "border-blue-600 text-blue-700" : "border-transparent text-slate-500"}`} onClick={() => setTab("Excused Students")}>Excused Students</button>
+              ) : null}
+            </div>
           </div>
 
-          {tab === "Take attendance" ? <AttendancePage adminMode /> : null}
-          {tab === "Monthly Summary" ? <AttendancePage adminMode initialView="month" filterYearId={yearId} filterClassId={classId} filterSectionId={sectionId} /> : null}
+          {tab === "Take attendance" ? <AttendancePage adminMode lockView /> : null}
+          {tab === "Monthly report" ? <AttendancePage adminMode lockView initialView="month" filterYearId={yearId} filterClassId={classId} filterSectionId={sectionId} /> : null}
 
           {tab === "Students" && sectionId ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -250,32 +264,36 @@ export function SchoolAttendanceDashboard() {
                   <option value="No records">No records</option>
                 </select>
               </div>
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-400">
-                  <tr>{["SL", "Student ID", "Roll", "Student", "Class", "Section", "Present", "Absent", "Late", "Excused", "Recorded", "%", "Status", "Reason", ""].map((heading) => <th key={heading} className="px-2 py-2">{heading}</th>)}</tr>
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
+                    {["#", "Student ID", "Roll", "Student", "Class", "Section", "Present", "Absent", "Late", "Excused", "Recorded", "%", "Status", "Reason", ""].map((heading) => <th key={heading} className="px-3 py-3">{heading}</th>)}
+                  </tr>
                 </thead>
                 <tbody>
                   {data.pageRows.map((row, index) => (
-                    <tr key={row.enrollmentId} className="border-t border-slate-100">
-                      <td className="px-2 py-2">{(data.page - 1) * 8 + index + 1}</td>
-                      <td className="px-2 py-2 font-mono text-xs">{row.permanentId}</td>
-                      <td className="px-2 py-2">{row.rollNumber}</td>
-                      <td className="px-2 py-2 font-semibold">{row.name}</td>
-                      <td className="px-2 py-2">{row.level}</td>
-                      <td className="px-2 py-2">{row.section}</td>
-                      <td className="px-2 py-2">{row.present}</td>
-                      <td className="px-2 py-2">{row.absent}</td>
-                      <td className="px-2 py-2">{row.late}</td>
-                      <td className="px-2 py-2">{row.excused}</td>
-                      <td className="px-2 py-2">{row.recorded}</td>
-                      <td className="px-2 py-2">{row.percent == null ? "—" : `${row.percent}%`}</td>
-                      <td className="px-2 py-2">{row.status}</td>
-                      <td className="px-2 py-2">{row.reason || "—"}</td>
-                      <td className="px-2 py-2"><button type="button" className="font-semibold text-blue-700" onClick={() => void viewHistory(row)}>View</button></td>
+                    <tr key={row.enrollmentId} className="border-b border-slate-100 last:border-0">
+                      <td className="px-3 py-3 text-slate-500">{(data.page - 1) * 8 + index + 1}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.permanentId}</td>
+                      <td className="px-3 py-3 text-slate-600">{String(row.rollNumber).padStart(2, "0")}</td>
+                      <td className="px-3 py-3 font-semibold text-slate-950">{row.name}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.level}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.section}</td>
+                      <td className="px-3 py-3 font-semibold" style={{ color: "#16A34A" }}>{row.present}</td>
+                      <td className="px-3 py-3 font-semibold" style={{ color: "#DC2626" }}>{row.absent}</td>
+                      <td className="px-3 py-3 font-semibold" style={{ color: "#D97706" }}>{row.late}</td>
+                      <td className="px-3 py-3 font-semibold" style={{ color: "#7C3AED" }}>{row.excused}</td>
+                      <td className="px-3 py-3 text-slate-700">{row.recorded}</td>
+                      <td className="px-3 py-3 font-semibold text-slate-800">{row.percent == null ? "—" : `${row.percent}%`}</td>
+                      <td className="px-3 py-3"><RatePill status={row.status} /></td>
+                      <td className="px-3 py-3 text-slate-500">{row.reason || "—"}</td>
+                      <td className="px-3 py-3"><button type="button" className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-semibold text-blue-700" onClick={() => void viewHistory(row)}>View</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
               {!data.pageRows.length ? <Empty /> : null}
               <div className="flex items-center justify-end gap-2 p-3 text-sm">
                 <button type="button" className="rounded-lg border px-3 py-1" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button>
@@ -285,66 +303,149 @@ export function SchoolAttendanceDashboard() {
             </div>
           ) : null}
 
-          {tab === "Daily Records" ? (
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              {!sectionId ? <p className="text-sm text-slate-500">Choose one section to see that day's attendance.</p> : null}
-              <div className="mb-3 flex gap-2">
-                <button type="button" className={`rounded-xl px-3 py-2 text-sm font-semibold ${session === "MORNING" ? "bg-blue-600 text-white" : "bg-emerald-50 text-emerald-800"}`} onClick={() => setSession("MORNING")}>Morning</button>
-                <button type="button" className={`rounded-xl px-3 py-2 text-sm font-semibold ${session === "AFTERNOON" ? "bg-blue-600 text-white" : "bg-emerald-50 text-emerald-800"}`} onClick={() => setSession("AFTERNOON")}>Afternoon</button>
+          {tab === "Daily Records" && !sectionId ? <p className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">Choose one section to see that day's attendance.</p> : null}
+          {tab === "Daily Records" && sectionId ? (
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-950">Daily records</h3>
+                  <p className="text-sm text-slate-500">{formatDay(to)} · {sessionLabel(session)}</p>
+                </div>
+                <div className="inline-flex rounded-xl bg-slate-100 p-1">
+                  <button type="button" className={`rounded-lg px-4 py-2 text-sm font-semibold ${session === "MORNING" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`} onClick={() => setSession("MORNING")}>Morning</button>
+                  <button type="button" className={`rounded-lg px-4 py-2 text-sm font-semibold ${session === "AFTERNOON" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`} onClick={() => setSession("AFTERNOON")}>Afternoon</button>
+                </div>
               </div>
-              {daily.map((row) => (
-                <p key={row.enrollmentId} className="border-t border-slate-100 py-2 text-sm">{row.permanentId} · Roll {row.rollNumber} · {row.student} · {row.status ?? "Not recorded"}{row.note ? ` · ${row.note}` : ""}</p>
-              ))}
-              {sectionId && !daily.length ? <Empty /> : null}
+              <div className="space-y-3 p-3 md:hidden">
+                {daily.map((row) => (
+                  <article key={row.enrollmentId} className="rounded-2xl border border-slate-200 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-950">{row.student}</p>
+                        <p className="text-xs text-slate-500">{row.permanentId}</p>
+                      </div>
+                      <p className="rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">Roll {String(row.rollNumber).padStart(2, "0")}</p>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                      <MarkPill status={row.status} />
+                      <p className="text-xs text-slate-500">{row.note || ""}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
+                      {["#", "Student ID", "Name", "Roll No", "Status", "Note"].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {daily.map((row, index) => (
+                      <tr key={row.enrollmentId} className="border-b border-slate-100 last:border-0">
+                        <td className="px-4 py-3 text-slate-500">{index + 1}</td>
+                        <td className="px-4 py-3 text-slate-600">{row.permanentId}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-950">{row.student}</td>
+                        <td className="px-4 py-3 text-slate-600">{String(row.rollNumber).padStart(2, "0")}</td>
+                        <td className="px-4 py-3"><MarkPill status={row.status} /></td>
+                        <td className="px-4 py-3 text-slate-500">{row.note || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!daily.length ? <Empty /> : null}
             </div>
           ) : null}
 
-          {tab === "Excused Students" && sectionId ? (
+          {tab === "Excused Students" && showExcused ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase text-slate-400"><tr>{["Student", "ID", "Class", "Section", "Date", "Session", "Reason", "Recorded by", "Created", "Updated", ""].map((heading) => <th key={heading} className="px-2 py-2">{heading}</th>)}</tr></thead>
+              <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">{["Student", "ID", "Class", "Section", "Date", "Session", "Reason", "Recorded by", "Created", "Updated", ""].map((heading) => <th key={heading} className="px-3 py-3">{heading}</th>)}</tr>
+                </thead>
                 <tbody>
                   {excused.map((row) => (
-                    <tr key={row.id} className="border-t border-slate-100">
-                      <td className="px-2 py-2 font-semibold">{row.student}</td>
-                      <td className="px-2 py-2 font-mono text-xs">{row.permanentId}</td>
-                      <td className="px-2 py-2">{row.level}</td>
-                      <td className="px-2 py-2">{row.section}</td>
-                      <td className="px-2 py-2">{row.date}</td>
-                      <td className="px-2 py-2">{row.session}</td>
-                      <td className="px-2 py-2">{row.note || "—"}</td>
-                      <td className="px-2 py-2">{row.teacher}</td>
-                      <td className="px-2 py-2">{new Date(row.createdAt).toLocaleString()}</td>
-                      <td className="px-2 py-2">{new Date(row.updatedAt).toLocaleString()}</td>
-                      <td className="px-2 py-2"><button type="button" className="font-semibold text-blue-700" onClick={() => void correct(row)}>Correct</button></td>
+                    <tr key={row.id} className="border-b border-slate-100 last:border-0">
+                      <td className="px-3 py-3 font-semibold text-slate-950">{row.student}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.permanentId}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.level}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.section}</td>
+                      <td className="px-3 py-3 text-slate-700">{formatDay(row.date)}</td>
+                      <td className="px-3 py-3 text-slate-600">{sessionLabel(row.session)}</td>
+                      <td className="px-3 py-3 text-slate-500">{row.note || "—"}</td>
+                      <td className="px-3 py-3 text-slate-600">{row.teacher}</td>
+                      <td className="px-3 py-3 text-slate-500">{new Date(row.createdAt).toLocaleString()}</td>
+                      <td className="px-3 py-3 text-slate-500">{new Date(row.updatedAt).toLocaleString()}</td>
+                      <td className="px-3 py-3"><button type="button" className="rounded-lg border border-blue-200 px-3 py-1.5 text-sm font-semibold text-blue-700" onClick={() => void correct(row)}>Correct</button></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
               {!excused.length ? <Empty /> : null}
-            </div>
-          ) : null}
-
-          {tab === "Reports" && sectionId ? (
-            <div className="flex gap-3">
-              <button type="button" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" onClick={exportCsv}>Export CSV</button>
-              <button type="button" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold" onClick={() => window.print()}>Print</button>
             </div>
           ) : null}
         </>
       ) : null}
 
       {historyName ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-6" onClick={() => setHistoryName("")}>
-          <div className="max-h-[70vh] w-full max-w-lg overflow-auto rounded-2xl bg-white p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
-            <h3 className="text-lg font-semibold">{historyName}</h3>
-            {history.map((row) => <p key={`${row.date}-${row.session}`} className="mt-2 text-sm">{row.date} · {row.session} · {row.status}{row.note ? ` · ${row.note}` : ""}</p>)}
-            {!history.length ? <p className="mt-2 text-sm text-slate-500">No recorded sessions this month.</p> : null}
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4" onClick={() => setHistoryName("")}>
+          <div className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Attendance history</p>
+                <h3 className="text-lg font-bold text-slate-950">{historyName}</h3>
+              </div>
+              <button type="button" className="grid h-8 w-8 place-items-center rounded-full text-slate-500 hover:bg-slate-100" aria-label="Close" onClick={() => setHistoryName("")}><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-2 overflow-auto p-4">
+              {history.map((row) => (
+                <div key={`${row.date}-${row.session}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-950">{formatDay(row.date)}</p>
+                    <p className="text-xs text-slate-500">{sessionLabel(row.session)}{row.note ? ` · ${row.note}` : ""}</p>
+                  </div>
+                  <MarkPill status={row.status} />
+                </div>
+              ))}
+              {!history.length ? <p className="px-1 py-6 text-center text-sm text-slate-500">No recorded sessions this month.</p> : null}
+            </div>
           </div>
         </div>
       ) : null}
     </div>
   );
+}
+
+function formatDay(value: string) {
+  const date = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+function sessionLabel(value: string) {
+  if (value === "MORNING") return "Morning";
+  if (value === "AFTERNOON") return "Afternoon";
+  return value;
+}
+
+function MarkPill({ status }: { status: string | null }) {
+  const tone = status === "PRESENT" ? { label: "Present", color: "#16A34A", bg: "#F0FDF4" }
+    : status === "ABSENT" ? { label: "Absent", color: "#DC2626", bg: "#FEF2F2" }
+    : status === "LATE" ? { label: "Late", color: "#D97706", bg: "#FFFBEB" }
+    : status === "EXCUSED" ? { label: "Excused", color: "#7C3AED", bg: "#F5F3FF" }
+    : { label: "Not recorded", color: "#64748B", bg: "#F8FAFC" };
+  return <span className="inline-flex shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: tone.color, backgroundColor: tone.bg }}>{tone.label}</span>;
+}
+
+function RatePill({ status }: { status: string }) {
+  const tone = status === "Good" ? { color: "#16A34A", bg: "#F0FDF4" }
+    : status === "Fair" ? { color: "#D97706", bg: "#FFFBEB" }
+    : status === "Low" ? { color: "#DC2626", bg: "#FEF2F2" }
+    : { color: "#64748B", bg: "#F8FAFC" };
+  return <span className="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: tone.color, backgroundColor: tone.bg }}>{status}</span>;
 }
 
 function Card({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: string }) {
