@@ -165,13 +165,13 @@ export function SchoolAttendanceDashboard() {
         <label className="text-sm text-slate-600">School<input className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2" value={data?.school.name ?? ""} readOnly /></label>
         <label className="text-sm text-slate-600">Class / Form
           <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={classId} onChange={(event) => { setClassId(event.target.value); setSectionId(""); setPage(1); }}>
-            <option value="">All classes</option>
+            <option value="">Choose class</option>
             {data?.classes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </label>
         <label className="text-sm text-slate-600">Section
-          <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={sectionId} onChange={(event) => { setSectionId(event.target.value); setPage(1); }}>
-            <option value="">All sections</option>
+          <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={sectionId} disabled={!classId} onChange={(event) => { setSectionId(event.target.value); setPage(1); }}>
+            <option value="">Choose section</option>
             {selectedClass?.sections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
           </select>
         </label>
@@ -194,6 +194,8 @@ export function SchoolAttendanceDashboard() {
 
       {data ? (
         <>
+          {sectionId ? (
+          <>
           <div className="grid grid-cols-5 gap-3">
             <Card label="Total Students" value={data.summary.students} detail="Enrolled in the filter" tone="text-slate-900" />
             <Card label="Present" value={data.summary.present} detail={`${data.summary.presentPercent}% of recorded`} tone="text-emerald-700" />
@@ -222,6 +224,10 @@ export function SchoolAttendanceDashboard() {
               {data.reasons.length ? data.reasons.map((row) => <Bar key={row.label} label={row.label} value={row.value} total={data.summary.excused || 1} color="bg-violet-500" />) : <Empty />}
             </Chart>
           </div>
+          </>
+          ) : (
+            <p className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center text-sm text-slate-500">Choose academic year, Class / Form, and Section. Each section shows only its own attendance.</p>
+          )}
 
           <div className="flex gap-2 border-b border-slate-200">
             {tabs.map((item) => (
@@ -230,9 +236,9 @@ export function SchoolAttendanceDashboard() {
           </div>
 
           {tab === "Take attendance" ? <AttendancePage adminMode /> : null}
-          {tab === "Monthly Summary" ? <AttendancePage adminMode initialView="month" /> : null}
+          {tab === "Monthly Summary" ? <AttendancePage adminMode initialView="month" filterYearId={yearId} filterClassId={classId} filterSectionId={sectionId} /> : null}
 
-          {tab === "Students" ? (
+          {tab === "Students" && sectionId ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex gap-3 border-b border-slate-100 p-3">
                 <input className="w-72 rounded-xl border border-slate-200 px-3 py-2 text-sm" placeholder="Search name, ID, or roll" value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }} />
@@ -293,7 +299,7 @@ export function SchoolAttendanceDashboard() {
             </div>
           ) : null}
 
-          {tab === "Excused Students" ? (
+          {tab === "Excused Students" && sectionId ? (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase text-slate-400"><tr>{["Student", "ID", "Class", "Section", "Date", "Session", "Reason", "Recorded by", "Created", "Updated", ""].map((heading) => <th key={heading} className="px-2 py-2">{heading}</th>)}</tr></thead>
@@ -319,7 +325,7 @@ export function SchoolAttendanceDashboard() {
             </div>
           ) : null}
 
-          {tab === "Reports" ? (
+          {tab === "Reports" && sectionId ? (
             <div className="flex gap-3">
               <button type="button" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" onClick={exportCsv}>Export CSV</button>
               <button type="button" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold" onClick={() => window.print()}>Print</button>

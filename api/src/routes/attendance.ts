@@ -22,6 +22,11 @@ function day(value: string) {
   return new Date(`${value}T00:00:00.000Z`);
 }
 
+function isSchoolHoliday(date: Date) {
+  const weekday = date.getUTCDay();
+  return weekday === 4 || weekday === 5 || weekday === 6;
+}
+
 export const attendanceRouter = Router();
 
 attendanceRouter.get("/attendance/options", requireAuth, requireRole("TEACHER", "SCHOOL_ADMIN"), async (req, res, next) => {
@@ -35,20 +40,33 @@ attendanceRouter.get("/attendance/options", requireAuth, requireRole("TEACHER", 
         res.json({ schools: [] });
         return;
       }
-      const classes = await prisma.classGroup.findMany({
-        where: { academicYearId: year.id },
-        include: { sections: { include: { _count: { select: { enrollments: { where: { status: "ACTIVE" } } } } } } },
-        orderBy: { level: "asc" },
+      const years = await prisma.academicYear.findMany({
+        where: { schoolId: admin.school.id },
+        include: {
+          classes: {
+            include: { sections: { include: { _count: { select: { enrollments: { where: { status: "ACTIVE" } } } } } } },
+            orderBy: { level: "asc" },
+          },
+        },
+        orderBy: { startDate: "desc" },
       });
+      const classes = years.find((item) => item.id === year.id)?.classes ?? [];
+      const mapClasses = (items: typeof classes) => items.map((item) => ({
+        id: item.id,
+        label: levelLabel(item.level),
+        sections: item.sections.map((section) => ({ id: section.id, name: section.name, students: section._count.enrollments })),
+      }));
       res.json({
         schools: [{
           id: admin.school.id,
           name: admin.school.name,
           year: { id: year.id, name: year.name },
-          classes: classes.map((item) => ({
+          classes: mapClasses(classes),
+          years: years.map((item) => ({
             id: item.id,
-            label: levelLabel(item.level),
-            sections: item.sections.map((section) => ({ id: section.id, name: section.name, students: section._count.enrollments })),
+            name: item.name,
+            isCurrent: item.isCurrent,
+            classes: mapClasses(item.classes),
           })),
         }],
       });
@@ -152,32 +170,33 @@ attendanceRouter.get("/attendance/monthly-absences", requireAuth, requireRole("S
     if (!admin?.school?.isActive) throw new HttpError(403, "You are not allowed to access this record.");
     const month = String(req.query.month ?? "");
     if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "Choose a month and year.");
+    const academicYearId = String(req.query.academicYearId ?? "");
     const classId = String(req.query.classId ?? "");
+    const sectionId = String(req.query.sectionId ?? "");
     const q = String(req.query.q ?? "").trim().toLowerCase();
     const start = new Date(`${month}-01T00:00:00.000Z`);
     const end = new Date(start);
     end.setUTCMonth(end.getUTCMonth() + 1);
-    const year = await prisma.academicYear.findFirst({
-      where: {
-        schoolId: admin.school.id,
-        startDate: { lte: end },
-        endDate: { gte: start },
-      },
-      orderBy: { startDate: "desc" },
-    }) ?? await prisma.academicYear.findFirst({ where: { schoolId: admin.school.id, isCurrent: true } });
+    if (!academicYearId || !classId || !sectionId) {
+      res.json({ month, year: null, classes: [], students: [] });
+      return;
+    }
+    const year = await prisma.academicYear.findFirst({ where: { id: academicYearId, schoolId: admin.school.id } });
+    if (!year) throw new HttpError(403, "You are not allowed to access this record.");
     const classes = await prisma.classGroup.findMany({
       where: {
         schoolId: admin.school.id,
-        ...(year ? { academicYearId: year.id } : {}),
-        ...(classId ? { id: classId } : {}),
+        academicYearId: year.id,
+        id: classId,
+        sections: { some: { id: sectionId } },
       },
-      include: { sections: true },
+      include: { sections: { where: { id: sectionId } } },
       orderBy: { level: "asc" },
     });
     const sectionIds = classes.flatMap((item) => item.sections.map((section) => section.id));
     const enrollments = sectionIds.length
       ? await prisma.enrollment.findMany({
-          where: { schoolId: admin.school.id, sectionId: { in: sectionIds }, status: { in: ["ACTIVE", "RETAINED", "TRANSFERRED"] } },
+          where: { schoolId: admin.school.id, academicYearId: year.id, sectionId: { in: sectionIds } },
           include: { student: true, classGroup: true, section: true },
         })
       : [];
@@ -186,7 +205,6 @@ attendanceRouter.get("/attendance/monthly-absences", requireAuth, requireRole("S
           where: {
             enrollmentId: { in: enrollments.map((item) => item.id) },
             date: { gte: start, lt: end },
-            status: { in: ["ABSENT", "EXCUSED", "LATE"] },
           },
           orderBy: [{ date: "asc" }, { session: "asc" }],
         })
@@ -198,6 +216,7 @@ attendanceRouter.get("/attendance/monthly-absences", requireAuth, requireRole("S
         const mine = records.filter((item) => ids.has(item.enrollmentId));
         const dayMap = new Map<string, { date: string; session: string; absent: number; late: number; excused: number }>();
         for (const record of mine) {
+          if (isSchoolHoliday(record.date)) continue;
           const key = `${record.date.toISOString().slice(0, 10)}:${record.session}`;
           const row = dayMap.get(key) ?? {
             date: record.date.toISOString().slice(0, 10),
@@ -227,15 +246,15 @@ attendanceRouter.get("/attendance/monthly-absences", requireAuth, requireRole("S
     const people = enrollments
       .map((enrollment) => {
         const mine = records.filter((item) => item.enrollmentId === enrollment.id);
-        const absences = mine.filter((item) => item.status === "ABSENT" || item.status === "EXCUSED" || item.status === "LATE");
         return {
           enrollmentId: enrollment.id,
           sectionId: enrollment.sectionId,
           permanentId: enrollment.student.permanentId,
+          rollNumber: enrollment.rollNumber,
           name: `${enrollment.student.firstName} ${enrollment.student.fatherName} ${enrollment.student.grandfatherName}`,
           level: levelLabel(enrollment.classGroup.level),
           section: enrollment.section.name,
-          days: absences.map((item) => ({
+          days: mine.filter((item) => !isSchoolHoliday(item.date)).map((item) => ({
             date: item.date.toISOString().slice(0, 10),
             session: item.session,
             status: item.status,
@@ -243,8 +262,7 @@ attendanceRouter.get("/attendance/monthly-absences", requireAuth, requireRole("S
           })),
         };
       })
-      .filter((row) => row.days.length)
-      .filter((row) => !q || `${row.name} ${row.permanentId}`.toLowerCase().includes(q));
+      .filter((row) => !q || `${row.name} ${row.permanentId} ${row.rollNumber}`.toLowerCase().includes(q));
     res.json({
       month,
       year: year ? { id: year.id, name: year.name } : null,
@@ -465,15 +483,16 @@ attendanceRouter.get("/attendance/dashboard", requireAuth, requireRole("SCHOOL_A
         orderBy: { date: "asc" },
       })
       : [];
-    const count = (status: string, list = records) => list.filter((item) => item.status === status).length;
+    const counted = records.filter((item) => !isSchoolHoliday(item.date));
+    const count = (status: string, list = counted) => list.filter((item) => item.status === status).length;
     const present = count("PRESENT");
     const absent = count("ABSENT");
     const late = count("LATE");
     const excused = count("EXCUSED");
-    const recorded = records.length;
+    const recorded = counted.length;
     const percent = (value: number) => (recorded ? Math.round((value / recorded) * 1000) / 10 : 0);
     const trendMap = new Map<string, { present: number; absent: number; late: number; excused: number }>();
-    for (const record of records) {
+    for (const record of counted) {
       const key = record.date.toISOString().slice(0, 10);
       const row = trendMap.get(key) ?? { present: 0, absent: 0, late: 0, excused: 0 };
       if (record.status === "PRESENT") row.present += 1;
@@ -483,14 +502,14 @@ attendanceRouter.get("/attendance/dashboard", requireAuth, requireRole("SCHOOL_A
       trendMap.set(key, row);
     }
     const reasonMap = new Map<string, number>();
-    for (const record of records.filter((item) => item.status === "EXCUSED")) {
+    for (const record of counted.filter((item) => item.status === "EXCUSED")) {
       const key = reasonBucket(record.note);
       reasonMap.set(key, (reasonMap.get(key) ?? 0) + 1);
     }
     const q = String(req.query.q ?? "").trim().toLowerCase();
     const statusFilter = String(req.query.status ?? "ALL");
     const students = enrollments.map((enrollment) => {
-      const mine = records.filter((item) => item.enrollmentId === enrollment.id);
+      const mine = counted.filter((item) => item.enrollmentId === enrollment.id);
       const presentCount = count("PRESENT", mine);
       const absentCount = count("ABSENT", mine);
       const lateCount = count("LATE", mine);

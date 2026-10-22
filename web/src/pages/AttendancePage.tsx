@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Moon, Search, Send, Sun, Users, X } from "lucide-react";
 import { api } from "../lib/api";
 
@@ -8,6 +8,12 @@ type Options = {
     name: string;
     year: { id: string; name: string };
     classes: Array<{ id: string; label: string; sections: Array<{ id: string; name: string; students: number }> }>;
+    years?: Array<{
+      id: string;
+      name: string;
+      isCurrent: boolean;
+      classes: Array<{ id: string; label: string; sections: Array<{ id: string; name: string; students: number }> }>;
+    }>;
   }>;
 };
 
@@ -58,6 +64,7 @@ type MonthlyAbsences = {
     enrollmentId: string;
     sectionId: string;
     permanentId: string;
+    rollNumber: number;
     name: string;
     level: string;
     section: string;
@@ -76,7 +83,7 @@ function draftKey(sectionId: string, date: string, session: string) {
   return `emp_attendance_draft:${sectionId}:${date}:${session}`;
 }
 
-export function AttendancePage({ adminMode = false, initialView = "take" }: { adminMode?: boolean; initialView?: "take" | "month" }) {
+export function AttendancePage({ adminMode = false, initialView = "take", filterYearId, filterClassId, filterSectionId }: { adminMode?: boolean; initialView?: "take" | "month"; filterYearId?: string; filterClassId?: string; filterSectionId?: string }) {
   const [options, setOptions] = useState<Options | null>(null);
   const [schoolId, setSchoolId] = useState("");
   const [classId, setClassId] = useState("");
@@ -97,10 +104,17 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   const [loadedKey, setLoadedKey] = useState("");
   const [studentQuery, setStudentQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [draftClosed, setDraftClosed] = useState(false);
   const [view, setView] = useState<"take" | "month">(initialView);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [monthYearId, setMonthYearId] = useState("");
   const [monthClassId, setMonthClassId] = useState("");
+  const [monthSectionId, setMonthSectionId] = useState("");
   const [monthQuery, setMonthQuery] = useState("");
+  const controlledMonth = filterYearId !== undefined;
+  const yearForMonth = controlledMonth ? filterYearId : monthYearId;
+  const classForMonth = controlledMonth ? filterClassId ?? "" : monthClassId;
+  const sectionForMonth = controlledMonth ? filterSectionId ?? "" : monthSectionId;
   const [monthly, setMonthly] = useState<MonthlyAbsences | null>(null);
 
   useEffect(() => {
@@ -168,16 +182,20 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
 
   useEffect(() => {
     if (view !== "month" || !adminMode) return;
-    const params = new URLSearchParams({ month });
-    if (monthClassId) params.set("classId", monthClassId);
+    if (!yearForMonth || !classForMonth || !sectionForMonth) {
+      setMonthly(null);
+      return;
+    }
+    const params = new URLSearchParams({ month, academicYearId: yearForMonth, classId: classForMonth, sectionId: sectionForMonth });
     if (monthQuery.trim()) params.set("q", monthQuery.trim());
     api<MonthlyAbsences>(`/api/v1/attendance/monthly-absences?${params}`)
       .then(setMonthly)
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load monthly absences."));
-  }, [view, adminMode, month, monthClassId, monthQuery]);
+  }, [view, adminMode, month, yearForMonth, classForMonth, sectionForMonth, monthQuery]);
 
   useEffect(() => {
     setNotice(null);
+    setDraftClosed(false);
   }, [sectionId, date, session]);
 
   useEffect(() => {
@@ -219,7 +237,7 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   const canMark = Boolean(session) && !locked && !submitting;
   const selectionReady = loadedKey === `${sectionId}:${date}:${session}`;
   const submitted = selectionReady && Boolean(session) && !editing && !dirty && rows.some((row) => row.status);
-  const showActions = Boolean(session && sheet?.currentYear && selectionReady && !submitted && rows.length > 0);
+  const showActions = Boolean(session && sheet?.currentYear && selectionReady && !submitted && !draftClosed && rows.length > 0);
 
   function markDirty(next: Sheet["rows"]) {
     setRows(next);
@@ -248,7 +266,6 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   }
 
   function cancel() {
-    if (dirty && !window.confirm("Discard unsaved attendance marks?")) return;
     if (sectionId && session) localStorage.removeItem(draftKey(sectionId, date, session));
     setDirty(false);
     setSaved("");
@@ -257,9 +274,21 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
 
   function saveDraft() {
     if (!sectionId || !session) return;
-    localStorage.setItem(draftKey(sectionId, date, session), JSON.stringify(rows));
+    try {
+      localStorage.setItem(draftKey(sectionId, date, session), JSON.stringify(rows));
+    } catch {
+      setNotice({ kind: "error", title: "Draft was not saved", message: "The draft could not be saved on this device." });
+      return;
+    }
     setDirty(false);
-    setSaved("Draft saved on this device. Submit later to store attendance.");
+    setEditing(false);
+    setDraftClosed(true);
+    setSaved("");
+    setNotice({
+      kind: "success",
+      title: "Draft saved successfully!",
+      message: "The attendance draft has been saved on this device.",
+    });
   }
 
   async function submit() {
@@ -323,71 +352,61 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   }
 
   if (view === "month" && adminMode) {
+    const monthYears = school?.years ?? [];
+    const monthYear = monthYears.find((item) => item.id === yearForMonth);
+    const monthClasses = monthYear?.classes ?? [];
+    const monthSections = monthClasses.find((item) => item.id === classForMonth)?.sections ?? [];
+    const monthReady = Boolean(yearForMonth && classForMonth && sectionForMonth);
     return (
       <div className="space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-2xl font-bold text-slate-950">Monthly attendance</h2>
-            <p className="text-sm text-slate-500">Choose month and year, then see absences by class or search one student.</p>
+            <p className="text-sm text-slate-500">Choose the academic year, Class / Form, and one section. Each section shows only its own students.</p>
           </div>
           <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700" onClick={() => setView("take")}>Take attendance</button>
         </div>
-        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
-          <label className="text-xs font-medium text-slate-500">Month and year
+        <div className={`grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${controlledMonth ? "md:grid-cols-2" : "md:grid-cols-3 lg:grid-cols-5"}`}>
+          {controlledMonth ? null : (
+            <>
+              <label className="text-xs font-medium text-slate-500">Academic year
+                <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" value={monthYearId} onChange={(event) => { setMonthYearId(event.target.value); setMonthClassId(""); setMonthSectionId(""); }}>
+                  <option value="">Choose year</option>
+                  {monthYears.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-medium text-slate-500">Class / Form
+                <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" value={monthClassId} disabled={!monthYearId} onChange={(event) => { setMonthClassId(event.target.value); setMonthSectionId(""); }}>
+                  <option value="">Choose class</option>
+                  {monthClasses.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-medium text-slate-500">Section
+                <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" value={monthSectionId} disabled={!monthClassId} onChange={(event) => setMonthSectionId(event.target.value)}>
+                  <option value="">Choose section</option>
+                  {monthSections.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </label>
+            </>
+          )}
+          <label className="text-xs font-medium text-slate-500">Month
             <input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" type="month" value={month} onChange={(event) => setMonth(event.target.value)} />
-          </label>
-          <label className="text-xs font-medium text-slate-500">Class
-            <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" value={monthClassId} onChange={(event) => setMonthClassId(event.target.value)}>
-              <option value="">All classes</option>
-              {school?.classes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
           </label>
           <label className="text-xs font-medium text-slate-500">Search student
             <span className="relative mt-1 block">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm" placeholder="Name or student ID" value={monthQuery} onChange={(event) => setMonthQuery(event.target.value)} />
+              <input className="w-full rounded-xl border border-slate-200 py-2.5 pl-9 pr-3 text-sm" placeholder="Name or student ID" value={monthQuery} onChange={(event) => setMonthQuery(event.target.value)} disabled={!monthReady} />
             </span>
           </label>
         </div>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
-        {monthQuery.trim() ? (
-          <section className="space-y-3">
-            <h3 className="font-semibold text-slate-900">Student absences</h3>
-            {monthly?.students.length ? monthly.students.map((person) => (
-              <article key={person.enrollmentId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="font-semibold text-slate-950">{person.name}</p>
-                <p className="text-xs text-slate-500">{person.permanentId} · {person.level} · Section {person.section}</p>
-                <ul className="mt-2 space-y-1 text-sm text-slate-700">
-                  {person.days.map((day) => (
-                    <li key={`${day.date}-${day.session}`}>{day.date} · {day.session === "MORNING" ? "Morning" : "Afternoon"} · {day.status}{day.note ? ` · ${day.note}` : ""}</li>
-                  ))}
-                </ul>
-              </article>
-            )) : <p className="text-sm text-slate-500">No matching absences this month.</p>}
-          </section>
+        {monthReady ? (
+          <>
+            <AttendanceLegend />
+            <MonthlyAttendanceTable month={month} students={monthly?.students ?? []} />
+          </>
         ) : (
-          <section className="space-y-3">
-            {monthly?.classes.map((group) => (
-              <article key={group.classId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="font-semibold text-slate-950">{group.label}</h3>
-                <div className="mt-3 space-y-3">
-                  {group.sections.map((sectionRow) => (
-                    <div key={sectionRow.sectionId} className="rounded-xl bg-slate-50 px-3 py-3">
-                      <p className="text-sm font-semibold text-slate-800">Section {sectionRow.section} · {sectionRow.students} students</p>
-                      {sectionRow.days.length ? (
-                        <ul className="mt-2 space-y-1 text-sm text-slate-700">
-                          {sectionRow.days.map((day) => (
-                            <li key={`${day.date}-${day.session}`}>{day.date} · {day.session === "MORNING" ? "Morning" : "Afternoon"} · Absent {day.absent} · Late {day.late} · Excused {day.excused}</li>
-                          ))}
-                        </ul>
-                      ) : <p className="mt-1 text-sm text-slate-500">No absences recorded this month.</p>}
-                    </div>
-                  ))}
-                </div>
-              </article>
-            ))}
-            {!monthly?.classes.length ? <p className="text-sm text-slate-500">No classes for this month.</p> : null}
-          </section>
+          <p className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">Choose academic year, Class / Form, and Section to see this section's attendance.</p>
         )}
       </div>
     );
@@ -497,7 +516,7 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
                 <p className="text-sm text-slate-500">{sheet.level} · Section {sheet.section}{session ? ` · ${session === "MORNING" ? "Morning Session" : "Afternoon Session"}` : ""}</p>
               </div>
               <div className="flex gap-2">
-                {locked ? <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button> : null}
+                {locked ? <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => { setDraftClosed(false); setEditing(true); }}>Edit</button> : null}
                 <button type="button" disabled={!canMark} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}>All present</button>
               </div>
             </div>
@@ -532,7 +551,7 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
                 <div className="w-full max-w-sm">
                   <SearchField value={studentQuery} onChange={setStudentQuery} placeholder="Search student by name, ID, or roll..." />
                 </div>
-                {locked ? <button type="button" className="shrink-0 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button> : null}
+                {locked ? <button type="button" className="shrink-0 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => { setDraftClosed(false); setEditing(true); }}>Edit</button> : null}
                 <button type="button" disabled={!canMark} className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}>All present</button>
               </div>
             </div>
@@ -691,6 +710,126 @@ function StatusMark({ active, color, disabled, size, onSelect }: { active: boole
         {active ? <Check className={`pointer-events-none relative z-20 shrink-0 text-white ${icon}`} stroke="white" strokeWidth={3} absoluteStrokeWidth aria-hidden /> : null}
       </span>
     </button>
+  );
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+function monthDays(month: string) {
+  const [year, mon] = month.split("-").map(Number);
+  if (!year || !mon) return [];
+  const total = new Date(Date.UTC(year, mon, 0)).getUTCDate();
+  return Array.from({ length: total }, (_, index) => {
+    const date = `${month}-${String(index + 1).padStart(2, "0")}`;
+    const weekday = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+    return { date, day: index + 1, weekday: WEEKDAYS[weekday] ?? "", holiday: weekday === 4 || weekday === 5 || weekday === 6 };
+  });
+}
+
+function recordedStatus(days: MonthlyAbsences["students"][number]["days"], date: string, session: "MORNING" | "AFTERNOON", holiday: boolean) {
+  if (holiday) return null;
+  return days.find((item) => item.date === date && item.session === session)?.status ?? null;
+}
+
+function MarkText({ status }: { status: string | null }) {
+  const known = statuses.find((item) => item.value === status);
+  return <span className="text-[11px] font-semibold" style={{ color: known?.color ?? "#94a3b8" }}>{known?.label ?? "–"}</span>;
+}
+
+function AttendanceLegend() {
+  return (
+    <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm sm:grid-cols-3">
+      <p><span className="font-semibold" style={{ color: "#16A34A" }}>Present</span>, <span className="font-semibold" style={{ color: "#DC2626" }}>Absent</span>, <span className="font-semibold" style={{ color: "#D97706" }}>Late</span>, and <span className="font-semibold" style={{ color: "#7C3AED" }}>Excused</span> mean attendance was recorded.</p>
+      <p><span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-500">–</span> on a shaded column is a scheduled school holiday: Thursday, Friday, or Saturday.</p>
+      <p><span className="font-semibold text-slate-500">–</span> on a normal column means that session was not recorded. It is not counted as Absent.</p>
+    </div>
+  );
+}
+
+function MonthlyAttendanceTable({ month, students }: { month: string; students: MonthlyAbsences["students"] }) {
+  const days = monthDays(month);
+  const groups = new Map<string, MonthlyAbsences["students"]>();
+  const ordered = [...students].sort((a, b) => a.level.localeCompare(b.level) || a.section.localeCompare(b.section) || a.rollNumber - b.rollNumber || a.name.localeCompare(b.name));
+  for (const student of ordered) {
+    const key = `${student.level} · Section ${student.section}`;
+    groups.set(key, [...(groups.get(key) ?? []), student]);
+  }
+  if (!ordered.length) return <p className="text-sm text-slate-500">No students for this month.</p>;
+  return (
+    <div className="space-y-4">
+      {[...groups.entries()].map(([label, rows]) => (
+        <section key={label} className="space-y-3">
+          <h3 className="font-semibold text-slate-950">{label}</h3>
+          <div className="space-y-3 md:hidden">
+            {rows.map((student) => (
+              <article key={student.enrollmentId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-slate-950">{student.name}</p>
+                    <p className="text-sm text-slate-500">{student.permanentId}</p>
+                  </div>
+                  <p className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">Roll {String(student.rollNumber).padStart(2, "0")}</p>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {days.map((day) => (
+                    <div key={day.date} className={`rounded-xl border px-2 py-2 ${day.holiday ? "border-slate-200 bg-slate-100" : "border-slate-200 bg-white"}`}>
+                      <p className="text-xs font-semibold text-slate-700">{day.day} {day.weekday}</p>
+                      <p className="mt-1 flex justify-between text-xs text-slate-500"><span>M</span><MarkText status={recordedStatus(student.days, day.date, "MORNING", day.holiday)} /></p>
+                      <p className="flex justify-between text-xs text-slate-500"><span>A</span><MarkText status={recordedStatus(student.days, day.date, "AFTERNOON", day.holiday)} /></p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
+            <table className="w-full min-w-max border-separate border-spacing-0 text-left text-xs">
+              <thead>
+                <tr>
+                  <th rowSpan={2} className="sticky left-0 z-20 min-w-20 border-b border-slate-200 bg-white px-3 py-2">Roll No</th>
+                  <th rowSpan={2} className="sticky left-20 z-20 min-w-40 border-b border-slate-200 bg-white px-3 py-2">Name</th>
+                  {days.map((day) => (
+                    <th key={day.date} colSpan={2} className={`border-b border-l border-slate-200 px-1 py-2 text-center ${day.holiday ? "bg-slate-100 text-slate-500" : "bg-white text-slate-700"}`}>
+                      <span className="block font-semibold">{day.day}</span>
+                      <span className="block font-medium">{day.weekday}</span>
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  {days.map((day) => (
+                    <Fragment key={`${day.date}-sessions`}>
+                      <th className={`border-b border-l border-slate-200 px-1 py-1 text-center font-semibold ${day.holiday ? "bg-slate-100 text-slate-500" : "text-slate-500"}`}>M</th>
+                      <th className={`border-b border-slate-200 px-1 py-1 text-center font-semibold ${day.holiday ? "bg-slate-100 text-slate-500" : "text-slate-500"}`}>A</th>
+                    </Fragment>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((student) => (
+                  <tr key={student.enrollmentId}>
+                    <td className="sticky left-0 z-10 border-b border-slate-100 bg-white px-3 py-2 font-semibold text-slate-700">Roll {String(student.rollNumber).padStart(2, "0")}</td>
+                    <td className="sticky left-20 z-10 border-b border-slate-100 bg-white px-3 py-2">
+                      <p className="font-semibold text-slate-950">{student.name}</p>
+                      <p className="text-[11px] text-slate-500">{student.permanentId}</p>
+                    </td>
+                    {days.map((day) => (
+                      <Fragment key={day.date}>
+                        <td className={`border-b border-l border-slate-100 px-1 py-2 text-center ${day.holiday ? "bg-slate-100" : "bg-white"}`}>
+                          <MarkText status={recordedStatus(student.days, day.date, "MORNING", day.holiday)} />
+                        </td>
+                        <td className={`border-b border-slate-100 px-1 py-2 text-center ${day.holiday ? "bg-slate-100" : "bg-white"}`}>
+                          <MarkText status={recordedStatus(student.days, day.date, "AFTERNOON", day.holiday)} />
+                        </td>
+                      </Fragment>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
