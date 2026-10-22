@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Check, Moon, Search, Send, Sun, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Check, Moon, Search, Send, Sun, Users, X } from "lucide-react";
 import { api } from "../lib/api";
 
 type Options = {
@@ -66,10 +66,10 @@ type MonthlyAbsences = {
 };
 
 const statuses = [
-  { value: "PRESENT", label: "Present", ring: "border-emerald-500 bg-emerald-500 text-white", text: "text-emerald-600" },
-  { value: "ABSENT", label: "Absent", ring: "border-rose-500 bg-rose-500 text-white", text: "text-rose-600" },
-  { value: "LATE", label: "Late", ring: "border-amber-500 bg-amber-500 text-white", text: "text-amber-600" },
-  { value: "EXCUSED", label: "Excused", ring: "border-violet-500 bg-violet-500 text-white", text: "text-violet-600" },
+  { value: "PRESENT", label: "Present", color: "#16A34A" },
+  { value: "ABSENT", label: "Absent", color: "#DC2626" },
+  { value: "LATE", label: "Late", color: "#D97706" },
+  { value: "EXCUSED", label: "Excused", color: "#7C3AED" },
 ] as const;
 
 function draftKey(sectionId: string, date: string, session: string) {
@@ -91,7 +91,12 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   const [rows, setRows] = useState<Sheet["rows"]>([]);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
+  const [notice, setNotice] = useState<{ kind: "success" | "error"; title: string; message: string } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [loadedKey, setLoadedKey] = useState("");
   const [studentQuery, setStudentQuery] = useState("");
+  const [page, setPage] = useState(1);
   const [view, setView] = useState<"take" | "month">(initialView);
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [monthClassId, setMonthClassId] = useState("");
@@ -128,6 +133,7 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
       setRows([]);
       return;
     }
+    const selectionKey = `${sectionId}:${date}:${session}`;
     const sessionQuery = session ? `&session=${session}` : "";
     api<Sheet>(`/api/v1/attendance-sheet?sectionId=${sectionId}&date=${date}${sessionQuery}`)
       .then((data) => {
@@ -141,6 +147,7 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
                 setRows(draft);
                 setEditing(true);
                 setDirty(true);
+                setLoadedKey(selectionKey);
                 setSaved("Draft restored on this device.");
                 return;
               }
@@ -154,6 +161,7 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
         setRows(data.rows);
         setEditing(!hasSaved);
         setDirty(false);
+        setLoadedKey(selectionKey);
       })
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load the sheet."));
   }, [sectionId, date, session, reloadKey]);
@@ -167,6 +175,20 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
       .then(setMonthly)
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load monthly absences."));
   }, [view, adminMode, month, monthClassId, monthQuery]);
+
+  useEffect(() => {
+    setNotice(null);
+  }, [sectionId, date, session]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [studentQuery, sectionId, date, session]);
+
+  useEffect(() => {
+    if (notice?.kind !== "success") return;
+    const timer = window.setTimeout(() => setNotice(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -186,8 +208,18 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   }), [rows]);
 
   const visibleRows = rows.filter((row) => `${row.student} ${row.permanentId} ${row.rollNumber}`.toLowerCase().includes(studentQuery.trim().toLowerCase()));
+  const pageSize = 10;
+  const pageCount = Math.max(1, Math.ceil(visibleRows.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pagedRows = visibleRows.slice(pageStart, pageStart + pageSize);
+  const pageNumbers = Array.from({ length: pageCount }, (_, index) => index + 1).filter((number) => pageCount <= 7 || number === 1 || number === pageCount || Math.abs(number - currentPage) <= 1);
+  const totalStudents = sheet?.students ?? rows.length;
   const locked = Boolean(session) && !editing;
-  const canMark = Boolean(session) && !locked;
+  const canMark = Boolean(session) && !locked && !submitting;
+  const selectionReady = loadedKey === `${sectionId}:${date}:${session}`;
+  const submitted = selectionReady && Boolean(session) && !editing && !dirty && rows.some((row) => row.status);
+  const showActions = Boolean(session && sheet?.currentYear && selectionReady && !submitted && rows.length > 0);
 
   function markDirty(next: Sheet["rows"]) {
     setRows(next);
@@ -231,11 +263,15 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   }
 
   async function submit() {
-    setError("");
+    if (submittingRef.current || submitted) return;
+    submittingRef.current = true;
+    setSubmitting(true);
     setSaved("");
     const marked = rows.filter((row) => row.status);
     if (!marked.length) {
-      setError("Mark at least one student before submitting.");
+      submittingRef.current = false;
+      setSubmitting(false);
+      setNotice({ kind: "error", title: "Attendance was not submitted", message: "Mark at least one student before submitting." });
       return;
     }
     try {
@@ -248,24 +284,40 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
           rows: marked.map((row) => ({ enrollmentId: row.enrollmentId, status: row.status, note: row.note })),
         }),
       });
-      if (sectionId && session) localStorage.removeItem(draftKey(sectionId, date, session));
-      setSaved("Attendance submitted.");
-      setDirty(false);
-      setEditing(false);
+    } catch (caught) {
+      setNotice({
+        kind: "error",
+        title: "Attendance was not submitted",
+        message: caught instanceof Error ? caught.message : "Could not submit attendance.",
+      });
+      return;
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+    if (sectionId && session) localStorage.removeItem(draftKey(sectionId, date, session));
+    setDirty(false);
+    setEditing(false);
+    setNotice({
+      kind: "success",
+      title: "Attendance submitted successfully!",
+      message: "The attendance session has been recorded successfully.",
+    });
+    try {
       const data = await api<Sheet>(`/api/v1/attendance-sheet?sectionId=${sectionId}&date=${date}&session=${session}`);
       setSheet(data);
       setRows(data.rows);
       const status = await api<DayStatus>(`/api/v1/attendance/day-status?sectionId=${sectionId}&date=${date}`);
       setDayStatus(status);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not submit attendance.");
+    } catch {
+      /* The save already succeeded. Keep the submitted marks on screen. */
     }
   }
 
   function sessionHint(value: "MORNING" | "AFTERNOON") {
     const info = value === "MORNING" ? dayStatus?.morning : dayStatus?.afternoon;
     if (!info) return "Choose class and section first";
-    if (info.complete) return "Recorded";
+    if (info.complete) return `Submitted · ${info.marked}/${dayStatus?.students ?? info.marked}`;
     if (info.recorded) return `Partial · ${info.marked}/${dayStatus?.students ?? 0}`;
     return "Not recorded";
   }
@@ -342,7 +394,18 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
+    <div className="mx-auto w-full max-w-3xl space-y-4 md:max-w-none">
+      {notice ? (
+        <div role="status" className={`flex items-start gap-3 rounded-2xl border px-4 py-3 shadow-sm ${notice.kind === "success" ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50"}`}>
+          <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-white ${notice.kind === "success" ? "bg-emerald-600" : "bg-red-600"}`}>
+            {notice.kind === "success" ? <Check className="h-5 w-5" stroke="white" strokeWidth={3} /> : <X className="h-5 w-5" stroke="white" strokeWidth={3} />}
+          </span>
+          <span className="min-w-0">
+            <span className={`block text-sm font-semibold ${notice.kind === "success" ? "text-emerald-950" : "text-red-950"}`}>{notice.title}</span>
+            <span className={`block text-sm ${notice.kind === "success" ? "text-emerald-800" : "text-red-800"}`}>{notice.message}</span>
+          </span>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-slate-950">Take attendance</h2>
@@ -353,7 +416,8 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
         ) : null}
       </div>
 
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-stretch">
+      <div className="grid flex-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
         {options && options.schools.length > 1 ? (
           <Field label="School">
             <select className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" value={school?.id ?? ""} onChange={(event) => {
@@ -392,9 +456,13 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
           <input className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </Field>
       </div>
+        <div className="hidden md:block lg:w-56 lg:shrink-0">
+          <TotalStudentsCard count={totalStudents} />
+        </div>
+      </div>
 
       {setupReady ? (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2 lg:max-w-3xl">
           <SessionCard
             value="MORNING"
             label="Morning session"
@@ -418,56 +486,118 @@ export function AttendancePage({ adminMode = false, initialView = "take" }: { ad
 
       {setupReady && !session ? <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">The student list is ready. Choose Morning or Afternoon before marking attendance.</p> : null}
 
+      {setupReady ? <div className="md:hidden"><TotalStudentsCard count={totalStudents} /></div> : null}
+
       {setupReady && sheet ? (
-        <section className="space-y-3 pb-28">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-lg font-bold text-slate-950">Student Attendance</h3>
-              <p className="text-sm text-slate-500">{sheet.level} · Section {sheet.section}{session ? ` · ${session === "MORNING" ? "Morning Session" : "Afternoon Session"}` : ""}</p>
+        <section className={`space-y-3 ${showActions ? "pb-28 md:pb-0" : ""}`}>
+          <div className="space-y-3 md:hidden">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">Student Attendance</h3>
+                <p className="text-sm text-slate-500">{sheet.level} · Section {sheet.section}{session ? ` · ${session === "MORNING" ? "Morning Session" : "Afternoon Session"}` : ""}</p>
+              </div>
+              <div className="flex gap-2">
+                {locked ? <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button> : null}
+                <button type="button" disabled={!canMark} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}>All present</button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              {locked ? <button type="button" className="rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button> : null}
-              <button type="button" disabled={!canMark} className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}>All present</button>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3">
-            <Search className="h-4 w-4 text-slate-400" />
-            <input className="w-full bg-transparent py-2.5 text-sm outline-none" placeholder="Search name, ID, or roll" value={studentQuery} onChange={(event) => setStudentQuery(event.target.value)} />
-          </label>
-          {visibleRows.map((row) => (
-            <article key={row.enrollmentId} className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-base font-bold text-slate-950">{row.student}</p>
-                  <p className="mt-0.5 text-sm text-slate-500">{row.permanentId}</p>
+            <SearchField value={studentQuery} onChange={setStudentQuery} />
+            {visibleRows.map((row) => (
+              <article key={row.enrollmentId} className="relative overflow-visible rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-bold text-slate-950">{row.student}</p>
+                    <p className="mt-0.5 text-sm text-slate-500">{row.permanentId}</p>
+                  </div>
+                  <p className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">Roll {String(row.rollNumber).padStart(2, "0")}</p>
                 </div>
-                <p className="shrink-0 rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700">Roll {String(row.rollNumber).padStart(2, "0")}</p>
+                <div className={`relative z-10 mt-4 grid grid-cols-4 gap-2 overflow-visible ${canMark ? "" : "pointer-events-none"} ${session ? "" : "opacity-50"}`}>
+                  {statuses.map((item) => (
+                    <div key={item.value} className="flex flex-col items-center gap-1.5">
+                      <StatusMark active={row.status === item.value} color={item.color} disabled={!canMark} size="lg" onSelect={() => setStatus(row.enrollmentId, item.value)} />
+                      <span className="text-[11px] font-semibold" style={{ color: row.status === item.value ? item.color : "#94a3b8" }}>{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <ReasonField row={row} canMark={canMark} onChange={(value) => setNote(row.enrollmentId, value)} />
+              </article>
+            ))}
+            {!visibleRows.length ? <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">No students in this section.</p> : null}
+          </div>
+
+          <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+              <h3 className="text-lg font-bold text-slate-950">Student Attendance</h3>
+              <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+                <div className="w-full max-w-sm">
+                  <SearchField value={studentQuery} onChange={setStudentQuery} placeholder="Search student by name, ID, or roll..." />
+                </div>
+                {locked ? <button type="button" className="shrink-0 rounded-xl border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-700" onClick={() => setEditing(true)}>Edit</button> : null}
+                <button type="button" disabled={!canMark} className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:opacity-50" onClick={markAllPresent}>All present</button>
               </div>
-              <div className={`mt-4 grid grid-cols-4 gap-2 ${canMark ? "" : "pointer-events-none opacity-50"}`}>
-                {statuses.map((item) => {
-                  const active = row.status === item.value;
-                  return (
-                    <button key={item.value} type="button" disabled={!canMark} onClick={() => setStatus(row.enrollmentId, item.value)} className="flex flex-col items-center gap-1.5">
-                      <span className={`grid h-11 w-11 place-items-center rounded-full border-2 ${active ? item.ring : "border-slate-200 bg-white text-transparent"}`}>
-                        {active ? <Check className="h-5 w-5" strokeWidth={3} /> : null}
-                      </span>
-                      <span className={`text-[11px] font-semibold ${active ? item.text : "text-slate-400"}`}>{item.label}</span>
-                    </button>
-                  );
-                })}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[920px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
+                    <th className="px-4 py-3">#</th>
+                    <th className="px-3 py-3">Student ID</th>
+                    <th className="px-3 py-3">Name</th>
+                    <th className="px-3 py-3">Roll No</th>
+                    {statuses.map((item) => <th key={item.value} className="px-3 py-3 text-center" style={{ color: item.color }}>{item.label}</th>)}
+                    <th className="px-4 py-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pagedRows.map((row, index) => {
+                    const chosen = statuses.find((item) => item.value === row.status);
+                    return (
+                      <tr key={row.enrollmentId} className="border-b border-slate-100 last:border-0">
+                        <td className="px-4 py-3 text-slate-500">{pageStart + index + 1}</td>
+                        <td className="px-3 py-3 text-slate-600">{row.permanentId}</td>
+                        <td className="px-3 py-3">
+                          <p className="font-semibold text-slate-950">{row.student}</p>
+                          <ReasonField row={row} canMark={canMark} onChange={(value) => setNote(row.enrollmentId, value)} />
+                        </td>
+                        <td className="px-3 py-3 text-slate-600">Roll {String(row.rollNumber).padStart(2, "0")}</td>
+                        {statuses.map((item) => (
+                          <td key={item.value} className={`px-3 py-3 text-center ${canMark ? "" : "pointer-events-none"} ${session ? "" : "opacity-50"}`}>
+                            <StatusMark active={row.status === item.value} color={item.color} disabled={!canMark} size="sm" onSelect={() => setStatus(row.enrollmentId, item.value)} />
+                          </td>
+                        ))}
+                        <td className="px-4 py-3 font-semibold" style={{ color: chosen?.color ?? "#94a3b8" }}>{chosen?.label ?? "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {!visibleRows.length ? <p className="px-4 py-8 text-center text-sm text-slate-500">No students in this section.</p> : null}
+            {rows.length > 0 ? <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
+              <p>Showing {visibleRows.length ? pageStart + 1 : 0} to {Math.min(pageStart + pageSize, visibleRows.length)} of {visibleRows.length} students</p>
+              <div className="flex items-center gap-1">
+                <button type="button" disabled={currentPage <= 1} className="rounded-lg border border-slate-200 px-2.5 py-1.5 disabled:opacity-40" onClick={() => setPage(currentPage - 1)}>‹</button>
+                {pageNumbers.map((number) => (
+                  <button key={number} type="button" className={`h-8 min-w-8 rounded-lg px-2 font-semibold ${number === currentPage ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"}`} onClick={() => setPage(number)}>{number}</button>
+                ))}
+                <button type="button" disabled={currentPage >= pageCount} className="rounded-lg border border-slate-200 px-2.5 py-1.5 disabled:opacity-40" onClick={() => setPage(currentPage + 1)}>›</button>
               </div>
-              {canMark && (row.status === "ABSENT" || row.status === "EXCUSED") ? (
-                <input className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" maxLength={200} placeholder={row.status === "ABSENT" ? "Absent reason (optional)" : "Excuse reason (optional)"} value={row.note} onChange={(event) => setNote(row.enrollmentId, event.target.value)} />
-              ) : null}
-            </article>
-          ))}
-          {!visibleRows.length ? <p className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">No students in this section.</p> : null}
-          {session && sheet.currentYear ? (
-            <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur">
+            </div> : null}
+            {showActions ? (
+              <div className="flex justify-end gap-2 border-t border-slate-100 px-4 py-3">
+                <button type="button" disabled={submitting} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" onClick={cancel}>Cancel</button>
+                <button type="button" disabled={!canMark} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" onClick={saveDraft}>Draft</button>
+                <button type="button" disabled={!canMark || submitting} className="inline-flex items-center justify-center gap-1 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submit()}>{submitting ? "Submitting..." : <><Send className="h-4 w-4" />Submit</>}</button>
+              </div>
+            ) : null}
+          </div>
+
+          {showActions ? (
+            <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur md:hidden">
               <div className="mx-auto grid w-full max-w-3xl grid-cols-3 gap-2">
-                <button type="button" className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700" onClick={cancel}>Cancel</button>
+                <button type="button" disabled={submitting} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" onClick={cancel}>Cancel</button>
                 <button type="button" disabled={!canMark} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50" onClick={saveDraft}>Draft</button>
-                <button type="button" disabled={!canMark} className="inline-flex items-center justify-center gap-1 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submit()}><Send className="h-4 w-4" />Submit</button>
+                <button type="button" disabled={!canMark || submitting} className="inline-flex items-center justify-center gap-1 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submit()}>{submitting ? "Submitting..." : <><Send className="h-4 w-4" />Submit</>}</button>
               </div>
             </div>
           ) : null}
@@ -524,5 +654,55 @@ function SessionCard({
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return <label className="block text-xs font-medium text-slate-500">{label}<span className="mt-1 block text-sm text-slate-800">{children}</span></label>;
+}
+
+function TotalStudentsCard({ count }: { count: number }) {
+  return (
+    <div className="flex h-full items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-blue-600 text-white">
+        <Users className="h-5 w-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xs font-medium text-slate-500">Total Students</span>
+        <span className="block text-2xl font-bold leading-none text-slate-950">{count}</span>
+      </span>
+    </div>
+  );
+}
+
+function SearchField({ value, onChange, placeholder = "Search name, ID, or roll" }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
+  return (
+    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3">
+      <Search className="h-4 w-4 shrink-0 text-slate-400" />
+      <input className="w-full bg-transparent py-2.5 text-sm outline-none" placeholder={placeholder} value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function StatusMark({ active, color, disabled, size, onSelect }: { active: boolean; color: string; disabled: boolean; size: "sm" | "lg"; onSelect: () => void }) {
+  const box = size === "lg" ? "h-11 w-11" : "h-8 w-8";
+  const icon = size === "lg" ? "h-5 w-5" : "h-4 w-4";
+  return (
+    <button type="button" disabled={disabled} onClick={onSelect} className="inline-grid place-items-center overflow-visible disabled:cursor-not-allowed">
+      <span
+        className={`relative z-10 grid shrink-0 place-items-center overflow-visible rounded-full border-2 bg-white ${box}`}
+        style={active ? { backgroundColor: color, borderColor: color } : { backgroundColor: "#ffffff", borderColor: `${color}66` }}
+      >
+        {active ? <Check className={`pointer-events-none relative z-20 shrink-0 text-white ${icon}`} stroke="white" strokeWidth={3} absoluteStrokeWidth aria-hidden /> : null}
+      </span>
+    </button>
+  );
+}
+
+function ReasonField({ row, canMark, onChange }: { row: Sheet["rows"][number]; canMark: boolean; onChange: (value: string) => void }) {
+  if (row.status !== "ABSENT" && row.status !== "EXCUSED") return null;
+  if (canMark) {
+    return (
+      <label className="mt-2 block text-xs font-medium text-slate-500">Reason (optional)
+        <input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800" maxLength={200} placeholder={row.status === "ABSENT" ? "Absent reason" : "Excuse reason"} value={row.note} onChange={(event) => onChange(event.target.value)} />
+      </label>
+    );
+  }
+  return row.note ? <p className="mt-2 text-sm font-normal text-slate-600">Reason: {row.note}</p> : null;
 }
 
