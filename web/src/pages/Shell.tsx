@@ -745,7 +745,7 @@ export function SuperAdminHome() {
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 backdrop-blur-xs border border-white/10">
                 <UsersRound className="h-3.5 w-3.5 text-blue-400" />
-                <span>{(summary.teachers + summary.staff).toLocaleString()} Macallimiin & Shaqaale</span>
+                <span>{(summary.teachers + summary.staff).toLocaleString()} Teachers & Staff</span>
               </span>
             </div>
           </div>
@@ -757,13 +757,13 @@ export function SuperAdminHome() {
               onClick={() => setCreateSchoolOpen(true)}
             >
               <Plus className="h-4 w-4" />
-              <span>Dugsiga Cusub Ku Dar</span>
+              <span>Add new school</span>
             </button>
             <a
               href="#schools-overview"
               className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-xs transition-all"
             >
-              <span>Eeg Dugsiyada</span>
+              <span>View schools</span>
               <ChevronRight className="h-4 w-4" />
             </a>
           </div>
