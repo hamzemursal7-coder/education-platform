@@ -617,7 +617,7 @@ export function StudentAttendancePage() {
             }`}
           >
             <CalendarCheck2 className="h-4 w-4" />
-            Daily Attendance Log
+            Daily Attendance
             <span
               className={`rounded-full px-1.5 py-0.2 text-[10px] ${
                 activeTab === "daily" ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"

@@ -13,6 +13,7 @@ import { issueSetPasswordLink, syncLoginEmail } from "../lib/accountLink.js";
 import { newRefreshToken } from "../lib/tokens.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
+import { buildStudentAttendancePayload } from "../lib/studentAttendance.js";
 
 export const parentsRouter = Router();
 
@@ -581,66 +582,119 @@ function isSchoolHoliday(date: Date) {
   return weekday === 4 || weekday === 5 || weekday === 6;
 }
 
-parentsRouter.get("/parent/children/:studentId/attendance", requireAuth, requireRole("PARENT"), async (req, res, next) => {
+parentsRouter.get("/parent/attendance", requireAuth, requireRole("PARENT"), async (req, res, next) => {
   try {
-    const month = String(req.query.month ?? "");
-    if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "Choose a month.");
-    const studentId = String(req.params.studentId);
     const guardian = await prisma.guardian.findFirst({
-      where: { userId: req.authUser!.id, students: { some: { studentId } } },
-    });
-    if (!guardian) throw new HttpError(403, "You are not allowed to access this record.");
-    const start = new Date(`${month}-01T00:00:00.000Z`);
-    const end = new Date(start);
-    end.setUTCMonth(end.getUTCMonth() + 1);
-    const student = await prisma.student.findUnique({
-      where: { id: studentId },
+      where: { userId: req.authUser!.id },
       include: {
-        enrollments: {
-          include: { school: true, academicYear: true, classGroup: true, section: true },
-          orderBy: { createdAt: "desc" },
+        students: {
+          include: {
+            student: {
+              include: {
+                enrollments: {
+                  where: { status: "ACTIVE" },
+                  include: { school: true, classGroup: true, section: true },
+                },
+              },
+            },
+          },
         },
       },
     });
-    if (!student) throw new HttpError(404, "Student was not found.");
-    const overlapping = student.enrollments.filter((item) => item.academicYear.startDate < end && item.academicYear.endDate >= start);
-    const enrollment = overlapping.find((item) => item.status === "ACTIVE") ?? overlapping[0] ?? student.enrollments.find((item) => item.status === "ACTIVE") ?? student.enrollments[0];
-    const records = enrollment
-      ? await prisma.attendanceRecord.findMany({
-          where: { enrollmentId: enrollment.id, date: { gte: start, lt: end } },
-          orderBy: [{ date: "asc" }, { session: "asc" }],
-        })
-      : [];
-    const counted = records.filter((item) => !isSchoolHoliday(item.date));
-    const count = (status: string) => counted.filter((item) => item.status === status).length;
-    const present = count("PRESENT");
-    const recorded = counted.length;
+    if (!guardian) throw new HttpError(403, "You are not allowed to access this record.");
+
+    const children = guardian.students.map((gs) => ({
+      id: gs.student.id,
+      name: `${gs.student.firstName} ${gs.student.fatherName} ${gs.student.grandfatherName}`.replace(/\s+/g, " ").trim(),
+      permanentId: gs.student.secondaryPermanentId ?? gs.student.permanentId,
+      photoUrl: gs.student.photoUrl,
+      relationship: gs.relationship,
+      school: gs.student.enrollments[0]?.school.name ?? "",
+      level: gs.student.enrollments[0] ? levelLabel(gs.student.enrollments[0].classGroup.level) : "",
+      section: gs.student.enrollments[0]?.section.name ?? "",
+    }));
+
+    const requestedChildId = typeof req.query.child === "string" && req.query.child ? req.query.child : (children[0]?.id ?? "");
+
+    if (!requestedChildId) {
+      res.json({
+        children: [],
+        selectedChildId: null,
+        student: null,
+        years: [],
+        year: null,
+        today: null,
+        latestRecordedDay: null,
+        availableMonths: [],
+        selectedMonth: "",
+        monthName: "",
+        summary: null,
+        days: [],
+        dailyLog: [],
+        yearSummary: { attendanceRate: null, totalSessions: 0, presentSessions: 0, absentSessions: 0, lateSessions: 0, excusedSessions: 0, months: [] },
+      });
+      return;
+    }
+
+    const payload = await buildStudentAttendancePayload({
+      studentId: requestedChildId,
+      academicYearId: typeof req.query.academicYearId === "string" ? req.query.academicYearId : undefined,
+      month: typeof req.query.month === "string" ? req.query.month : undefined,
+    });
+
     res.json({
-      month,
-      child: {
-        id: student.id,
-        name: `${student.firstName} ${student.fatherName} ${student.grandfatherName}`,
-        permanentId: student.secondaryPermanentId ?? student.permanentId,
-        school: enrollment?.school.name ?? "",
-        year: enrollment?.academicYear.name ?? "",
-        level: enrollment ? levelLabel(enrollment.classGroup.level) : "",
-        section: enrollment?.section.name ?? "",
-        rollNumber: enrollment?.rollNumber ?? null,
+      ...payload,
+      children,
+      selectedChildId: requestedChildId,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+parentsRouter.get("/parent/children/:studentId/attendance", requireAuth, requireRole("PARENT"), async (req, res, next) => {
+  try {
+    const studentId = String(req.params.studentId);
+    const guardian = await prisma.guardian.findFirst({
+      where: { userId: req.authUser!.id, students: { some: { studentId } } },
+      include: {
+        students: {
+          include: {
+            student: {
+              include: {
+                enrollments: {
+                  where: { status: "ACTIVE" },
+                  include: { school: true, classGroup: true, section: true },
+                },
+              },
+            },
+          },
+        },
       },
-      summary: {
-        present,
-        absent: count("ABSENT"),
-        late: count("LATE"),
-        excused: count("EXCUSED"),
-        recorded,
-        percent: recorded ? Math.round((present / recorded) * 1000) / 10 : null,
-      },
-      days: counted.map((item) => ({
-        date: item.date.toISOString().slice(0, 10),
-        session: item.session,
-        status: item.status,
-        note: item.status === "EXCUSED" ? item.note ?? "" : "",
-      })),
+    });
+    if (!guardian) throw new HttpError(403, "You are not allowed to access this record.");
+
+    const children = guardian.students.map((gs) => ({
+      id: gs.student.id,
+      name: `${gs.student.firstName} ${gs.student.fatherName} ${gs.student.grandfatherName}`.replace(/\s+/g, " ").trim(),
+      permanentId: gs.student.secondaryPermanentId ?? gs.student.permanentId,
+      photoUrl: gs.student.photoUrl,
+      relationship: gs.relationship,
+      school: gs.student.enrollments[0]?.school.name ?? "",
+      level: gs.student.enrollments[0] ? levelLabel(gs.student.enrollments[0].classGroup.level) : "",
+      section: gs.student.enrollments[0]?.section.name ?? "",
+    }));
+
+    const payload = await buildStudentAttendancePayload({
+      studentId,
+      academicYearId: typeof req.query.academicYearId === "string" ? req.query.academicYearId : undefined,
+      month: typeof req.query.month === "string" ? req.query.month : undefined,
+    });
+
+    res.json({
+      ...payload,
+      children,
+      selectedChildId: studentId,
     });
   } catch (error) {
     next(error);
