@@ -731,17 +731,17 @@ export function SuperAdminHome() {
               Education Management Platform
             </h2>
             <p className="mt-2 text-sm sm:text-base text-slate-300 leading-relaxed">
-             boggan waxa uu sahlayaa Kormeerka guud iyo maamulka dhammaan dugsiyada ururka, ardayda, macallimiinta, iyo xogta maaliyadeed.
+              Centralized control and complete oversight across all organization schools, students, educators, and finances.
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2.5 sm:gap-3 text-xs font-medium text-slate-300">
               <span className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 backdrop-blur-xs border border-white/10">
                 <Building2 className="h-3.5 w-3.5 text-indigo-400" />
-                <span>{summary.schools} Dugsiyo Guud ({activeSchools} Firfircoon)</span>
+                <span>{summary.schools} Total Schools ({activeSchools} Active)</span>
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 backdrop-blur-xs border border-white/10">
                 <GraduationCap className="h-3.5 w-3.5 text-emerald-400" />
-                <span>{summary.students.toLocaleString()} Arday Guud</span>
+                <span>{summary.students.toLocaleString()} Total Students</span>
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 backdrop-blur-xs border border-white/10">
                 <UsersRound className="h-3.5 w-3.5 text-blue-400" />
@@ -801,8 +801,8 @@ export function SuperAdminHome() {
           </div>
           <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950">{summary.students.toLocaleString()}</p>
           <div className="mt-2 flex items-center justify-between text-xs">
-            <span className="text-slate-600">👦 {summary.maleStudents} Wiil</span>
-            <span className="text-slate-600">👧 {summary.femaleStudents} Gabar</span>
+            <span className="text-slate-600">👦 {summary.maleStudents} Male</span>
+            <span className="text-slate-600">👧 {summary.femaleStudents} Female</span>
           </div>
           <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <span>Active Enrollments</span>
@@ -1121,8 +1121,8 @@ export function SuperAdminHome() {
             <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-400">
               <School className="h-6 w-6" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-slate-700">Wax dugsi ah lama helin</p>
-            <p className="mt-1 text-xs text-slate-500">Isku day inaad beddesho raadinta ama shaandhada aad dooratay.</p>
+            <p className="mt-3 text-sm font-semibold text-slate-700">No schools found</p>
+            <p className="mt-1 text-xs text-slate-500">Try adjusting your search query or filter options.</p>
             {(schoolSearch || typeFilter !== "ALL" || statusFilter !== "ALL") && (
               <button
                 type="button"
@@ -1314,9 +1314,9 @@ export function SuperAdminHome() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-700">
-                <span>Dugsiga Waa La Tiray</span>
+                <span>School Deleted</span>
                 <span>·</span>
-                <span className="font-semibold text-emerald-600">Deleted</span>
+                <span className="font-semibold text-emerald-600">Success</span>
               </div>
               <p className="mt-0.5 text-base font-bold text-slate-900 leading-snug">
                 {deletedFeedback.message}
@@ -1358,7 +1358,7 @@ export function SuperAdminHome() {
               <X className="h-5 w-5 stroke-[3]" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs font-bold uppercase tracking-wider text-rose-600">Khalad / Error</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-rose-600">Error</p>
               <p className="mt-0.5 text-sm font-bold text-slate-900">{error}</p>
             </div>
             <button
