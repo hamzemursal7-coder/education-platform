@@ -791,12 +791,11 @@ attendanceRouter.get("/student/attendance", requireAuth, requireRole("STUDENT"),
 
       let dayStatus: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED" | "PARTIAL" | "WEEKEND" | "NO_RECORD" = "NO_RECORD";
 
-      if (isWeekend) {
-        dayStatus = "WEEKEND";
-      } else if (dayRecords.length > 0) {
+      if (dayRecords.length > 0) {
         uniqueRecordedDays++;
         const hasPresent = dayRecords.some((r) => r.status === "PRESENT");
         const hasLate = dayRecords.some((r) => r.status === "LATE");
+        const hasAbsent = dayRecords.some((r) => r.status === "ABSENT");
         const hasExcused = dayRecords.some((r) => r.status === "EXCUSED");
         const allAbsent = dayRecords.every((r) => r.status === "ABSENT");
 
@@ -806,15 +805,19 @@ attendanceRouter.get("/student/attendance", requireAuth, requireRole("STUDENT"),
         } else if (allAbsent) {
           dayStatus = "ABSENT";
           uniqueAbsentDays++;
-        } else if (hasExcused && !hasPresent && !hasLate) {
+        } else if (dayRecords.every((r) => r.status === "EXCUSED")) {
           dayStatus = "EXCUSED";
-        } else if (hasLate) {
+        } else if (hasLate && !hasAbsent && !hasExcused) {
           dayStatus = "LATE";
           uniquePresentDays++;
-        } else if (hasPresent) {
+        } else if ((hasPresent || hasLate) && (hasAbsent || hasExcused)) {
           dayStatus = "PARTIAL";
           uniquePresentDays++;
+        } else {
+          dayStatus = "PARTIAL";
         }
+      } else if (isWeekend) {
+        dayStatus = "WEEKEND";
       }
 
       calendarDays.push({
@@ -840,10 +843,24 @@ attendanceRouter.get("/student/attendance", requireAuth, requireRole("STUDENT"),
         const afternoon = recs.find((r) => r.session === "AFTERNOON");
 
         let overall = "PRESENT";
-        if (recs.every((r) => r.status === "ABSENT")) overall = "ABSENT";
-        else if (recs.some((r) => r.status === "LATE")) overall = "LATE";
-        else if (recs.every((r) => r.status === "EXCUSED")) overall = "EXCUSED";
-        else if (recs.some((r) => r.status === "PRESENT")) overall = "PRESENT";
+        const hasPresent = recs.some((r) => r.status === "PRESENT");
+        const hasLate = recs.some((r) => r.status === "LATE");
+        const hasAbsent = recs.some((r) => r.status === "ABSENT");
+        const hasExcused = recs.some((r) => r.status === "EXCUSED");
+
+        if (recs.every((r) => r.status === "PRESENT")) {
+          overall = "PRESENT";
+        } else if (recs.every((r) => r.status === "ABSENT")) {
+          overall = "ABSENT";
+        } else if (recs.every((r) => r.status === "EXCUSED")) {
+          overall = "EXCUSED";
+        } else if (hasLate && !hasAbsent && !hasExcused) {
+          overall = "LATE";
+        } else if ((hasPresent || hasLate) && (hasAbsent || hasExcused)) {
+          overall = "PARTIAL";
+        } else {
+          overall = "PARTIAL";
+        }
 
         return {
           date: dateStr,
@@ -910,10 +927,15 @@ attendanceRouter.get("/student/attendance", requireAuth, requireRole("STUDENT"),
 
     let todayStatus: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED" | "PARTIAL" | "WEEKEND" | "NO_RECORD" = "NO_RECORD";
     if (todayRecords.length > 0) {
-      if (todayRecords.every((r) => r.status === "ABSENT")) todayStatus = "ABSENT";
-      else if (todayRecords.some((r) => r.status === "LATE")) todayStatus = "LATE";
+      const hasPresent = todayRecords.some((r) => r.status === "PRESENT");
+      const hasLate = todayRecords.some((r) => r.status === "LATE");
+      const hasAbsent = todayRecords.some((r) => r.status === "ABSENT");
+      const hasExcused = todayRecords.some((r) => r.status === "EXCUSED");
+
+      if (todayRecords.every((r) => r.status === "PRESENT")) todayStatus = "PRESENT";
+      else if (todayRecords.every((r) => r.status === "ABSENT")) todayStatus = "ABSENT";
       else if (todayRecords.every((r) => r.status === "EXCUSED")) todayStatus = "EXCUSED";
-      else if (todayRecords.every((r) => r.status === "PRESENT")) todayStatus = "PRESENT";
+      else if (hasLate && !hasAbsent && !hasExcused) todayStatus = "LATE";
       else todayStatus = "PARTIAL";
     } else if (isTodayWeekend) {
       todayStatus = "WEEKEND";

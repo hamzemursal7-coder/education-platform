@@ -328,6 +328,10 @@ export function StudentAttendancePage() {
                     <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                       ✓ Present
                     </span>
+                  ) : data.today.status === "PARTIAL" ? (
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-800">
+                      Partial Attendance
+                    </span>
                   ) : data.today.status === "LATE" ? (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
                       Late Arrival
@@ -350,20 +354,20 @@ export function StudentAttendancePage() {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-600 mt-0.5">
-                  {data.today.isWeekend
-                    ? "Somalia school weekend (Friday & Saturday). Normal classes resume on Sunday."
-                    : data.today.status !== "NO_RECORD"
-                      ? `Status recorded: ${data.today.status}${data.today.note ? ` — "${data.today.note}"` : ""}`
+                <p className="text-xs text-slate-600 mt-1">
+                  {data.today.status !== "NO_RECORD" && data.today.status !== "WEEKEND"
+                    ? `Status recorded: ${data.today.status === "PARTIAL" ? "Partial (Different status for Morning & Afternoon)" : data.today.status}${data.today.note ? ` — "${data.today.note}"` : ""}`
+                    : data.today.isWeekend
+                      ? "Somalia school weekend (Friday & Saturday). Normal classes resume on Sunday."
                       : "Attendance check-in has not been submitted by your teacher yet today."}
                 </p>
               </div>
             </div>
 
             {/* Sessions check-in status for today */}
-            <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 w-full sm:w-auto">
               {/* Morning session */}
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 shadow-2xs">
+              <div className="flex items-center justify-between sm:justify-start gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2 sm:py-1.5 shadow-2xs">
                 <span className="text-[11px] font-medium text-slate-500">Morning (AM):</span>
                 <span
                   className={`text-xs font-bold px-2 py-0.5 rounded-md ${
@@ -383,7 +387,7 @@ export function StudentAttendancePage() {
               </div>
 
               {/* Afternoon session */}
-              <div className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 shadow-2xs">
+              <div className="flex items-center justify-between sm:justify-start gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-2 sm:py-1.5 shadow-2xs">
                 <span className="text-[11px] font-medium text-slate-500">Afternoon (PM):</span>
                 <span
                   className={`text-xs font-bold px-2 py-0.5 rounded-md ${
@@ -411,7 +415,7 @@ export function StudentAttendancePage() {
                     if (todayDay) setSelectedDayDetail(todayDay);
                     setActiveTab("monthly");
                   }}
-                  className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-blue-700 transition-colors"
+                  className="col-span-2 sm:col-span-1 rounded-xl bg-blue-600 px-3 py-2 sm:py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-blue-700 transition-colors text-center"
                 >
                   View Details
                 </button>
@@ -721,6 +725,8 @@ export function StudentAttendancePage() {
                         {/* Status Icon Indicator */}
                         {day.dayStatus === "PRESENT" ? (
                           <span className="h-2 w-2 rounded-full bg-emerald-500" title="Present" />
+                        ) : day.dayStatus === "PARTIAL" ? (
+                          <span className="h-2 w-2 rounded-full bg-indigo-500" title="Partial" />
                         ) : day.dayStatus === "LATE" ? (
                           <span className="h-2 w-2 rounded-full bg-amber-500" title="Late" />
                         ) : day.dayStatus === "EXCUSED" ? (
@@ -733,7 +739,7 @@ export function StudentAttendancePage() {
                       </div>
 
                       {/* Sessions mini pills (AM / PM) */}
-                      {!isWeekend && (day.morning || day.afternoon) ? (
+                      {day.morning || day.afternoon ? (
                         <div className="mt-1 flex items-center gap-1">
                           {day.morning ? (
                             <span
@@ -953,6 +959,7 @@ export function StudentAttendancePage() {
             {[
               { id: "ALL", label: "All Days" },
               { id: "PRESENT", label: "Present" },
+              { id: "PARTIAL", label: "Partial" },
               { id: "LATE", label: "Late" },
               { id: "EXCUSED", label: "Excused" },
               { id: "ABSENT", label: "Absent" },
@@ -978,104 +985,142 @@ export function StudentAttendancePage() {
               {filteredDailyLog.map((log) => {
                 const isToday = log.date === data?.today?.date;
 
-                return (
-                  <div
-                    key={log.date}
-                    className={`p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
-                      isToday
-                        ? "bg-blue-50/40 border-l-4 border-l-blue-600"
-                        : "hover:bg-slate-50/70"
-                    }`}
-                  >
-                    {/* Left: Date */}
-                    <div className="flex items-center gap-3">
-                      <span
-                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold text-xs shadow-2xs ${
-                          isToday ? "bg-blue-600 text-white ring-2 ring-blue-200" : "bg-blue-50 text-blue-700"
-                        }`}
-                      >
-                        {log.date.slice(8, 10)}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs sm:text-sm font-bold text-slate-900">
-                            {log.formattedDate}
-                          </p>
-                          {isToday ? (
-                            <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-2xs animate-pulse">
-                              Today
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="text-[11px] text-slate-500 font-medium">{log.dayName}</p>
-                      </div>
-                    </div>
-
-                  {/* Middle: Sessions info */}
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    {/* Morning */}
-                    <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-1">
-                      <span className="text-[10px] text-slate-400 font-medium block">Morning (AM)</span>
-                      <span
-                        className={`font-semibold text-xs ${
-                          log.morning?.status === "PRESENT"
-                            ? "text-emerald-700"
-                            : log.morning?.status === "LATE"
-                              ? "text-amber-700"
-                              : log.morning?.status === "EXCUSED"
-                                ? "text-blue-700"
-                                : "text-rose-700"
-                        }`}
-                      >
-                        {log.morning?.status ?? "—"}
-                      </span>
-                    </div>
-
-                    {/* Afternoon */}
-                    <div className="rounded-lg border border-slate-100 bg-slate-50/80 px-2.5 py-1">
-                      <span className="text-[10px] text-slate-400 font-medium block">Afternoon (PM)</span>
-                      <span
-                        className={`font-semibold text-xs ${
-                          log.afternoon?.status === "PRESENT"
-                            ? "text-emerald-700"
-                            : log.afternoon?.status === "LATE"
-                              ? "text-amber-700"
-                              : log.afternoon?.status === "EXCUSED"
-                                ? "text-blue-700"
-                                : "text-rose-700"
-                        }`}
-                      >
-                        {log.afternoon?.status ?? "—"}
-                      </span>
-                    </div>
-
-                    {/* Teacher Note if any */}
-                    {log.note ? (
-                      <span className="text-[11px] text-slate-500 italic max-w-xs truncate" title={log.note}>
-                        "{log.note}"
-                      </span>
-                    ) : null}
-                  </div>
-
-                  {/* Right: Overall Day Status Badge */}
-                  <div className="shrink-0 self-start sm:self-center">
-                    <span
-                      className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ring-inset ${
-                        log.overall === "PRESENT"
-                          ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                const statusBadge = (
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold ring-1 ring-inset ${
+                      log.overall === "PRESENT"
+                        ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                        : log.overall === "PARTIAL"
+                          ? "bg-indigo-50 text-indigo-700 ring-indigo-600/20"
                           : log.overall === "LATE"
                             ? "bg-amber-50 text-amber-700 ring-amber-600/20"
                             : log.overall === "EXCUSED"
                               ? "bg-blue-50 text-blue-700 ring-blue-600/20"
                               : "bg-rose-50 text-rose-700 ring-rose-600/20"
+                    }`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        log.overall === "PRESENT"
+                          ? "bg-emerald-600"
+                          : log.overall === "PARTIAL"
+                            ? "bg-indigo-600"
+                            : log.overall === "LATE"
+                              ? "bg-amber-600"
+                              : log.overall === "EXCUSED"
+                                ? "bg-blue-600"
+                                : "bg-rose-600"
                       }`}
-                    >
-                      {log.overall === "PRESENT" ? "Full Day Present" : log.overall}
-                    </span>
+                    />
+                    {log.overall === "PRESENT"
+                      ? "Present"
+                      : log.overall === "PARTIAL"
+                        ? "Partial"
+                        : log.overall === "LATE"
+                          ? "Late"
+                          : log.overall === "EXCUSED"
+                            ? "Excused"
+                            : "Absent"}
+                  </span>
+                );
+
+                return (
+                  <div
+                    key={log.date}
+                    className={`p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                      isToday
+                        ? "bg-blue-50/40 border-l-4 border-l-blue-600"
+                        : "hover:bg-slate-50/70"
+                    }`}
+                  >
+                    {/* Header Row on Mobile / Left Section on Desktop: Date + Status Badge on mobile */}
+                    <div className="flex items-center justify-between sm:justify-start gap-3 w-full sm:w-auto">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold text-xs shadow-2xs ${
+                            isToday ? "bg-blue-600 text-white ring-2 ring-blue-200" : "bg-blue-50 text-blue-700"
+                          }`}
+                        >
+                          {log.date.slice(8, 10)}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs sm:text-sm font-bold text-slate-900">
+                              {log.formattedDate}
+                            </p>
+                            {isToday ? (
+                              <span className="rounded-full bg-blue-600 px-2 py-0.2 text-[9px] font-black uppercase tracking-wider text-white shadow-2xs animate-pulse">
+                                Today
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-[11px] text-slate-500 font-medium">{log.dayName}</p>
+                        </div>
+                      </div>
+
+                      {/* Mobile-only status badge on top right */}
+                      <div className="sm:hidden shrink-0">
+                        {statusBadge}
+                      </div>
+                    </div>
+
+                    {/* Middle: Sessions info (2-col grid on mobile, flex on desktop) */}
+                    <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 text-xs w-full sm:w-auto">
+                      {/* Morning */}
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-2 sm:px-2.5 sm:py-1">
+                        <span className="text-[10px] text-slate-400 font-medium block">Morning (AM)</span>
+                        <span
+                          className={`font-semibold text-xs ${
+                            log.morning?.status === "PRESENT"
+                              ? "text-emerald-700"
+                              : log.morning?.status === "LATE"
+                                ? "text-amber-700"
+                                : log.morning?.status === "EXCUSED"
+                                  ? "text-blue-700"
+                                  : log.morning?.status === "ABSENT"
+                                    ? "text-rose-700"
+                                    : "text-slate-400"
+                          }`}
+                        >
+                          {log.morning?.status ?? "—"}
+                        </span>
+                      </div>
+
+                      {/* Afternoon */}
+                      <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-2 sm:px-2.5 sm:py-1">
+                        <span className="text-[10px] text-slate-400 font-medium block">Afternoon (PM)</span>
+                        <span
+                          className={`font-semibold text-xs ${
+                            log.afternoon?.status === "PRESENT"
+                              ? "text-emerald-700"
+                              : log.afternoon?.status === "LATE"
+                                ? "text-amber-700"
+                                : log.afternoon?.status === "EXCUSED"
+                                  ? "text-blue-700"
+                                  : log.afternoon?.status === "ABSENT"
+                                    ? "text-rose-700"
+                                    : "text-slate-400"
+                          }`}
+                        >
+                          {log.afternoon?.status ?? "—"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Teacher Note if any */}
+                    {log.note ? (
+                      <div className="w-full sm:w-auto text-[11px] text-slate-600 italic bg-slate-50/90 p-2 rounded-xl border border-slate-100 sm:max-w-xs truncate" title={log.note}>
+                        "{log.note}"
+                      </div>
+                    ) : null}
+
+                    {/* Desktop-only status badge on right */}
+                    <div className="hidden sm:block shrink-0 self-center">
+                      {statusBadge}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-xs text-slate-500">
