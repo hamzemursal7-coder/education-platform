@@ -39,6 +39,8 @@ const saveSchema = z.object({
       marks: z.number().int().min(0).nullable(),
       isAbsent: z.boolean(),
       comment: z.string().optional(),
+      isReExam: z.boolean().optional(),
+      originalMarks: z.number().int().nullable().optional(),
     }),
   ),
 });
@@ -102,10 +104,9 @@ async function syncExamScope(
   const keepSections = new Set(uniqueSections);
   for (const row of existingSections) {
     if (keepSections.has(row.sectionId)) continue;
-    const used = await prisma.subjectResult.count({
-      where: { enrollment: { sectionId: row.sectionId }, examSubject: { examId }, ...hasEnteredMarks() },
+    await prisma.subjectResult.deleteMany({
+      where: { enrollment: { sectionId: row.sectionId }, examSubject: { examId } },
     });
-    if (used) throw new HttpError(400, "A section that already has marks cannot be removed.");
     await prisma.examSection.delete({ where: { examId_sectionId: { examId, sectionId: row.sectionId } } });
   }
   for (const sectionId of uniqueSections) {
@@ -119,10 +120,9 @@ async function syncExamScope(
   const existingClasses = await prisma.examClass.findMany({ where: { examId } });
   for (const row of existingClasses) {
     if (classIds.includes(row.classGroupId)) continue;
-    const used = await prisma.subjectResult.count({
-      where: { examSubject: { examId, classGroupId: row.classGroupId }, ...hasEnteredMarks() },
+    await prisma.subjectResult.deleteMany({
+      where: { examSubject: { examId, classGroupId: row.classGroupId } },
     });
-    if (used) throw new HttpError(400, "A class that already has marks cannot be removed.");
     await prisma.examSubject.deleteMany({ where: { examId, classGroupId: row.classGroupId } });
     await prisma.examClass.delete({ where: { examId_classGroupId: { examId, classGroupId: row.classGroupId } } });
   }
@@ -137,8 +137,7 @@ async function syncExamScope(
   const existingSubjects = await prisma.examSubject.findMany({ where: { examId } });
   for (const row of existingSubjects) {
     if (uniqueSubjects.has(`${row.classGroupId}|${row.subjectId}`)) continue;
-    const used = await prisma.subjectResult.count({ where: { examSubjectId: row.id, ...hasEnteredMarks() } });
-    if (used) throw new HttpError(400, "A subject that already has marks cannot be removed.");
+    await prisma.subjectResult.deleteMany({ where: { examSubjectId: row.id } });
     await prisma.examSubject.delete({ where: { id: row.id } });
   }
   for (const subject of uniqueSubjects.values()) {
@@ -360,6 +359,9 @@ resultsRouter.get("/exams/:id/review", requireAuth, requireRole("SCHOOL_ADMIN"),
               .map((enrollment) => {
                 const result = subject.results.find((item) => item.enrollmentId === enrollment.id);
                 const state = result?.state ?? "WAITING";
+                const isReExam = Boolean(result?.comment?.startsWith("RE_EXAM"));
+                const origRaw = result?.comment?.startsWith("RE_EXAM:") ? result.comment.split(":")[1] : null;
+                const originalMarks = origRaw ? Number(origRaw) : null;
                 return {
                   id: result?.id ?? null,
                   enrollmentId: enrollment.id,
@@ -370,6 +372,8 @@ resultsRouter.get("/exams/:id/review", requireAuth, requireRole("SCHOOL_ADMIN"),
                   marks: result?.marks ?? null,
                   isAbsent: result?.isAbsent ?? false,
                   comment: result?.comment ?? null,
+                  isReExam,
+                  originalMarks,
                   state,
                   rejectReason: result?.rejectReason ?? null,
                   submittedAt: result?.submittedAt ?? null,
@@ -413,6 +417,10 @@ resultsRouter.post("/exams/:id/admin-marks", requireAuth, requireRole("SCHOOL_AD
         throw new HttpError(400, `Marks must be from 0 to ${examSubject.maxMarks}.`);
       }
       const keepPublished = current?.state === "PUBLISHED";
+      const isReExam = Boolean(row.isReExam);
+      const commentValue = isReExam
+        ? `RE_EXAM:${row.originalMarks ?? current?.marks ?? ""}`
+        : (row.comment !== undefined ? row.comment : current?.comment);
       await prisma.subjectResult.upsert({
         where: { enrollmentId_examSubjectId: { enrollmentId: enrollment.id, examSubjectId: examSubject.id } },
         create: {
@@ -420,12 +428,14 @@ resultsRouter.post("/exams/:id/admin-marks", requireAuth, requireRole("SCHOOL_AD
           examSubjectId: examSubject.id,
           marks: row.isAbsent ? null : row.marks,
           isAbsent: row.isAbsent,
+          comment: commentValue,
           state: "SUBMITTED",
           submittedAt: new Date(),
         },
         update: {
           marks: row.isAbsent ? null : row.marks,
           isAbsent: row.isAbsent,
+          comment: commentValue,
           state: keepPublished ? "PUBLISHED" : "SUBMITTED",
           submittedAt: new Date(),
           publishedAt: keepPublished ? new Date() : current?.publishedAt,
@@ -443,6 +453,92 @@ resultsRouter.post("/exams/:id/admin-marks", requireAuth, requireRole("SCHOOL_AD
       summary: `School admin entered ${saved} mark${saved === 1 ? "" : "s"}`,
     });
     res.json({ saved });
+  } catch (error) {
+    next(error);
+  }
+});
+
+resultsRouter.delete("/exams/:id/subjects/:examSubjectId", requireAuth, requireRole("SCHOOL_ADMIN"), async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const exam = await prisma.exam.findFirst({ where: { id: String(req.params.id), schoolId: school.id } });
+    if (!exam) throw new HttpError(404, "Exam was not found.");
+    const examSubject = await prisma.examSubject.findFirst({
+      where: { id: String(req.params.examSubjectId), examId: exam.id },
+    });
+    if (!examSubject) throw new HttpError(404, "Subject is not on this exam.");
+    await prisma.subjectResult.deleteMany({ where: { examSubjectId: examSubject.id } });
+    await prisma.examSubject.delete({ where: { id: examSubject.id } });
+    await writeAudit({
+      schoolId: school.id,
+      actorUserId: req.authUser!.id,
+      action: "EXAM_SUBJECT_REMOVED",
+      entityType: "ExamSubject",
+      entityId: examSubject.id,
+      summary: `Admin removed subject from exam ${exam.id} and deleted associated marks.`,
+    });
+    res.json({ ok: true, removedSubjectId: examSubject.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+resultsRouter.post("/exams/:id/re-exam", requireAuth, requireRole("SCHOOL_ADMIN"), async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const body = z.object({
+      examSubjectId: z.string().min(1),
+      enrollmentId: z.string().min(1),
+      marks: z.number().int().min(0),
+    }).safeParse(req.body);
+    if (!body.success) throw new HttpError(400, "Valid marks and enrollment are required for re-exam.");
+    const exam = await prisma.exam.findFirst({ where: { id: String(req.params.id), schoolId: school.id } });
+    if (!exam) throw new HttpError(404, "Exam was not found.");
+    const examSubject = await prisma.examSubject.findFirst({
+      where: { id: body.data.examSubjectId, examId: exam.id },
+    });
+    if (!examSubject) throw new HttpError(404, "Subject is not on this exam.");
+    if (body.data.marks > examSubject.maxMarks) {
+      throw new HttpError(400, `Marks cannot exceed ${examSubject.maxMarks}.`);
+    }
+    const current = await prisma.subjectResult.findUnique({
+      where: { enrollmentId_examSubjectId: { enrollmentId: body.data.enrollmentId, examSubjectId: examSubject.id } },
+    });
+    const originalMarks = current?.marks ?? null;
+    const comment = `RE_EXAM:${originalMarks ?? ""}`;
+    const updated = await prisma.subjectResult.upsert({
+      where: { enrollmentId_examSubjectId: { enrollmentId: body.data.enrollmentId, examSubjectId: examSubject.id } },
+      create: {
+        enrollmentId: body.data.enrollmentId,
+        examSubjectId: examSubject.id,
+        marks: body.data.marks,
+        isAbsent: false,
+        comment,
+        state: "VERIFIED",
+        submittedAt: new Date(),
+        reviewedByUserId: req.authUser!.id,
+        reviewedAt: new Date(),
+      },
+      update: {
+        marks: body.data.marks,
+        isAbsent: false,
+        comment,
+        state: current?.state === "PUBLISHED" ? "PUBLISHED" : "VERIFIED",
+        submittedAt: new Date(),
+        reviewedByUserId: req.authUser!.id,
+        reviewedAt: new Date(),
+        publishedAt: current?.state === "PUBLISHED" ? new Date() : current?.publishedAt,
+      },
+    });
+    await writeAudit({
+      schoolId: school.id,
+      actorUserId: req.authUser!.id,
+      action: "RE_EXAM_ENTERED",
+      entityType: "SubjectResult",
+      entityId: updated.id,
+      summary: `Entered re-exam mark (${body.data.marks}/${examSubject.maxMarks}) for enrollment ${body.data.enrollmentId}`,
+    });
+    res.json({ ok: true, result: updated });
   } catch (error) {
     next(error);
   }

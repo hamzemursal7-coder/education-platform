@@ -1,9 +1,9 @@
-/** Same denominator rule as api/src/lib/examAverages.ts. Pending subjects keep their maximum marks. Official absences are left out of both sides. */
-export function provisionalTotal(rows: Array<{ maxMarks: number; marks: number | null; counted: boolean }>) {
-  const counted = rows.filter((row) => row.counted && row.maxMarks > 0);
-  const obtained = counted.reduce((sum, row) => sum + (row.marks ?? 0), 0);
+/** Same denominator rule as api/src/lib/examAverages.ts. Absent subjects remain in the denominator (maxMarks) and yield 0 marks, directly affecting the average until a re-exam is recorded. */
+export function provisionalTotal(rows: Array<{ maxMarks: number; marks: number | null; counted: boolean; absent?: boolean }>) {
+  const counted = rows.filter((row) => row.maxMarks > 0);
+  const obtained = counted.reduce((sum, row) => sum + (!row.absent ? (row.marks ?? 0) : 0), 0);
   const possible = counted.reduce((sum, row) => sum + row.maxMarks, 0);
-  const pending = rows.filter((row) => row.counted && row.maxMarks > 0 && row.marks == null).length;
+  const pending = rows.filter((row) => row.maxMarks > 0 && row.marks == null && !row.absent).length;
   return {
     obtained,
     possible,

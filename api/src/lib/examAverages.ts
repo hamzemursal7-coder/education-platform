@@ -90,8 +90,8 @@ function subjectPercentage(marks: number | null, maxMarks: number) {
 
 /**
  * Average = published marks obtained / maximum marks of every applicable subject.
- * Unpublished subjects stay in the denominator and are never stored as zero.
- * An officially recorded absence is left out of both sides, matching the existing grading policy.
+ * An absence counts as 0 marks while keeping the subject's maximum in the denominator,
+ * directly impacting the student's average until a re-exam / makeup is completed.
  * Duplicate subject ids are counted once.
  */
 export function summarizeSubjects(term: TermCode, rows: ExamAverageInput[]): TermAverage {
@@ -105,8 +105,9 @@ export function summarizeSubjects(term: TermCode, rows: ExamAverageInput[]): Ter
   const pending = subjects.filter((row) => !row.published);
   const published = subjects.filter((row) => row.published);
   const absent = published.filter((row) => row.absent);
-  const counted = subjects.filter((row) => !(row.published && row.absent));
-  const obtained = counted.reduce((sum, row) => sum + (row.published && row.marks != null ? row.marks : 0), 0);
+  // All subjects count in the possible denominator; absence yields 0 marks obtained
+  const counted = subjects;
+  const obtained = counted.reduce((sum, row) => sum + (row.published && !row.absent && row.marks != null ? row.marks : 0), 0);
   const possible = counted.reduce((sum, row) => sum + row.maxMarks, 0);
   const examDate = subjects.map((row) => row.examDate).find((value) => value) ?? null;
   return {
@@ -125,8 +126,8 @@ export function summarizeSubjects(term: TermCode, rows: ExamAverageInput[]): Ter
       subjectId: row.subjectId,
       name: row.name,
       maxMarks: row.maxMarks,
-      marks: row.published && !row.absent ? row.marks : null,
-      percentage: row.published && !row.absent ? subjectPercentage(row.marks, row.maxMarks) : null,
+      marks: row.published && !row.absent ? row.marks : row.published && row.absent ? 0 : null,
+      percentage: row.published && !row.absent ? subjectPercentage(row.marks, row.maxMarks) : row.published && row.absent ? 0 : null,
       published: row.published,
       absent: row.published && row.absent,
       pending: !row.published,
