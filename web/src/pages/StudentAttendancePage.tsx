@@ -94,6 +94,25 @@ type StudentAttendanceData = {
     section: string;
     rollNumber: number | null;
   } | null;
+  today: {
+    date: string;
+    dayName: string;
+    formattedDate: string;
+    isWeekend: boolean;
+    status: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED" | "PARTIAL" | "WEEKEND" | "NO_RECORD";
+    morning: DaySession | null;
+    afternoon: DaySession | null;
+    note: string | null;
+  };
+  latestRecordedDay: {
+    date: string;
+    dayName: string;
+    formattedDate: string;
+    status: string;
+    morning: DaySession | null;
+    afternoon: DaySession | null;
+    note: string | null;
+  } | null;
   availableMonths: string[];
   selectedMonth: string;
   monthName: string;
@@ -137,9 +156,10 @@ export function StudentAttendancePage() {
         if (!cancelled) {
           setData(res);
           setLoading(false);
-          // Auto select first day with records for detail drawer if in calendar
+          // Prefer today's record if present in the loaded month, otherwise first recorded day
+          const todayDay = res.days.find((d) => d.date === res.today?.date);
           const firstRecorded = res.days.find((d) => d.dayStatus !== "NO_RECORD" && d.dayStatus !== "WEEKEND");
-          setSelectedDayDetail(firstRecorded || null);
+          setSelectedDayDetail(todayDay || firstRecorded || null);
         }
       })
       .catch((err) => {
@@ -287,7 +307,121 @@ export function StudentAttendancePage() {
         </div>
       </section>
 
-      {/* 2. Month Selector & KPI Metrics Row */}
+      {/* 2. Current Day Attendance (Live Status Card) */}
+      {data?.today ? (
+        <section className="overflow-hidden rounded-2xl border border-blue-200/90 bg-gradient-to-r from-blue-50/90 via-indigo-50/50 to-white p-4 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3.5">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm ring-2 ring-blue-200">
+                <CalendarCheck2 className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-blue-900">
+                    Today's Attendance
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100/90 px-2.5 py-0.5 text-[11px] font-bold text-blue-800">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                    {data.today.dayName}, {data.today.formattedDate}
+                  </span>
+                  {data.today.status === "PRESENT" ? (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                      ✓ Present
+                    </span>
+                  ) : data.today.status === "LATE" ? (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                      Late Arrival
+                    </span>
+                  ) : data.today.status === "EXCUSED" ? (
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">
+                      Excused
+                    </span>
+                  ) : data.today.status === "ABSENT" ? (
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800">
+                      Absent
+                    </span>
+                  ) : data.today.isWeekend ? (
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                      School Weekend
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      Not Marked Yet
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  {data.today.isWeekend
+                    ? "Somalia school weekend (Friday & Saturday). Normal classes resume on Sunday."
+                    : data.today.status !== "NO_RECORD"
+                      ? `Status recorded: ${data.today.status}${data.today.note ? ` — "${data.today.note}"` : ""}`
+                      : "Attendance check-in has not been submitted by your teacher yet today."}
+                </p>
+              </div>
+            </div>
+
+            {/* Sessions check-in status for today */}
+            <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+              {/* Morning session */}
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 shadow-2xs">
+                <span className="text-[11px] font-medium text-slate-500">Morning (AM):</span>
+                <span
+                  className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                    data.today.morning?.status === "PRESENT"
+                      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20"
+                      : data.today.morning?.status === "LATE"
+                        ? "bg-amber-50 text-amber-700 ring-1 ring-amber-600/20"
+                        : data.today.morning?.status === "EXCUSED"
+                          ? "bg-blue-50 text-blue-700 ring-1 ring-blue-600/20"
+                          : data.today.morning?.status === "ABSENT"
+                            ? "bg-rose-50 text-rose-700 ring-1 ring-rose-600/20"
+                            : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {data.today.morning?.status ?? (data.today.isWeekend ? "Off" : "Pending")}
+                </span>
+              </div>
+
+              {/* Afternoon session */}
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200/90 bg-white px-3 py-1.5 shadow-2xs">
+                <span className="text-[11px] font-medium text-slate-500">Afternoon (PM):</span>
+                <span
+                  className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                    data.today.afternoon?.status === "PRESENT"
+                      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20"
+                      : data.today.afternoon?.status === "LATE"
+                        ? "bg-amber-50 text-amber-700 ring-1 ring-amber-600/20"
+                        : data.today.afternoon?.status === "EXCUSED"
+                          ? "bg-blue-50 text-blue-700 ring-1 ring-blue-600/20"
+                          : data.today.afternoon?.status === "ABSENT"
+                            ? "bg-rose-50 text-rose-700 ring-1 ring-rose-600/20"
+                            : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {data.today.afternoon?.status ?? (data.today.isWeekend ? "Off" : "Pending")}
+                </span>
+              </div>
+
+              {/* Quick Jump / Select Today */}
+              {data.days.some((d) => d.date === data?.today?.date) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const todayDay = data.days.find((d) => d.date === data?.today?.date);
+                    if (todayDay) setSelectedDayDetail(todayDay);
+                    setActiveTab("monthly");
+                  }}
+                  className="rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-blue-700 transition-colors"
+                >
+                  View Details
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {/* 3. Month Selector & KPI Metrics Row */}
       <section className="space-y-3.5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
@@ -302,6 +436,18 @@ export function StudentAttendancePage() {
 
           {/* Month Navigator */}
           <div className="flex items-center gap-1.5 self-start sm:self-auto">
+            {/* Jump to Current Month button if browsing another month */}
+            {data?.today && data.availableMonths.includes(data.today.date.slice(0, 7)) && data.selectedMonth !== data.today.date.slice(0, 7) ? (
+              <button
+                type="button"
+                onClick={() => changeMonth(data.today.date.slice(0, 7))}
+                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-colors mr-1 shadow-2xs"
+              >
+                <Clock className="h-3 w-3" />
+                Go to Today
+              </button>
+            ) : null}
+
             <button
               type="button"
               disabled={!hasPrevMonth}
@@ -534,6 +680,7 @@ export function StudentAttendancePage() {
                 {(data?.days ?? []).map((day) => {
                   const isSelected = selectedDayDetail?.date === day.date;
                   const isWeekend = day.isWeekend;
+                  const isToday = day.date === data?.today?.date;
 
                   return (
                     <button
@@ -542,22 +689,35 @@ export function StudentAttendancePage() {
                       onClick={() => setSelectedDayDetail(day)}
                       className={`min-h-[52px] sm:min-h-[64px] rounded-xl p-1 sm:p-1.5 flex flex-col justify-between text-left transition-all ${
                         isSelected
-                          ? "ring-2 ring-blue-600 bg-blue-50/40 shadow-xs"
-                          : isWeekend
-                            ? "bg-slate-50/60 border border-slate-100 text-slate-400"
-                            : day.dayStatus === "NO_RECORD"
-                              ? "bg-white border border-slate-100 hover:bg-slate-50/80"
-                              : "bg-white border border-slate-200/90 hover:border-blue-300 hover:shadow-2xs"
+                          ? "ring-2 ring-blue-600 bg-blue-50/50 shadow-xs border-blue-400"
+                          : isToday
+                            ? "ring-2 ring-blue-400 bg-blue-50/30 border-blue-300 shadow-2xs"
+                            : isWeekend
+                              ? "bg-slate-50/60 border border-slate-100 text-slate-400"
+                              : day.dayStatus === "NO_RECORD"
+                                ? "bg-white border border-slate-100 hover:bg-slate-50/80"
+                                : "bg-white border border-slate-200/90 hover:border-blue-300 hover:shadow-2xs"
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span
-                          className={`text-xs sm:text-sm font-bold ${
-                            isWeekend ? "text-slate-400" : isSelected ? "text-blue-700" : "text-slate-800"
-                          }`}
-                        >
-                          {day.dayNumber}
-                        </span>
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={`text-xs sm:text-sm font-bold ${
+                              isWeekend
+                                ? "text-slate-400"
+                                : isSelected || isToday
+                                  ? "text-blue-700"
+                                  : "text-slate-800"
+                            }`}
+                          >
+                            {day.dayNumber}
+                          </span>
+                          {isToday ? (
+                            <span className="rounded bg-blue-600 px-1 py-0.2 text-[8px] font-black uppercase tracking-wider text-white">
+                              Today
+                            </span>
+                          ) : null}
+                        </div>
                         {/* Status Icon Indicator */}
                         {day.dayStatus === "PRESENT" ? (
                           <span className="h-2 w-2 rounded-full bg-emerald-500" title="Present" />
@@ -815,23 +975,41 @@ export function StudentAttendancePage() {
           {/* List of days */}
           {filteredDailyLog.length ? (
             <div className="divide-y divide-slate-100 rounded-2xl border border-slate-200/80 bg-white overflow-hidden shadow-sm">
-              {filteredDailyLog.map((log) => (
-                <div
-                  key={log.date}
-                  className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors"
-                >
-                  {/* Left: Date */}
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-700 font-bold text-xs shadow-2xs">
-                      {log.date.slice(8, 10)}
-                    </span>
-                    <div>
-                      <p className="text-xs sm:text-sm font-bold text-slate-900">
-                        {log.formattedDate}
-                      </p>
-                      <p className="text-[11px] text-slate-500 font-medium">{log.dayName}</p>
+              {filteredDailyLog.map((log) => {
+                const isToday = log.date === data?.today?.date;
+
+                return (
+                  <div
+                    key={log.date}
+                    className={`p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                      isToday
+                        ? "bg-blue-50/40 border-l-4 border-l-blue-600"
+                        : "hover:bg-slate-50/70"
+                    }`}
+                  >
+                    {/* Left: Date */}
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold text-xs shadow-2xs ${
+                          isToday ? "bg-blue-600 text-white ring-2 ring-blue-200" : "bg-blue-50 text-blue-700"
+                        }`}
+                      >
+                        {log.date.slice(8, 10)}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs sm:text-sm font-bold text-slate-900">
+                            {log.formattedDate}
+                          </p>
+                          {isToday ? (
+                            <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-2xs animate-pulse">
+                              Today
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium">{log.dayName}</p>
+                      </div>
                     </div>
-                  </div>
 
                   {/* Middle: Sessions info */}
                   <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -896,7 +1074,8 @@ export function StudentAttendancePage() {
                     </span>
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center text-xs text-slate-500">

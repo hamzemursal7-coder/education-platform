@@ -891,6 +891,72 @@ attendanceRouter.get("/student/attendance", requireAuth, requireRole("STUDENT"),
       };
     }).filter((item) => item.totalSessions > 0);
 
+    // Compute today's check-in details
+    const now = new Date();
+    const todayDateOnly = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const todayIso = todayDateOnly.toISOString().slice(0, 10);
+    const todayDayOfWeek = todayDateOnly.getUTCDay();
+    const isTodayWeekend = todayDayOfWeek === 5 || todayDayOfWeek === 6;
+
+    const todayRecords = await prisma.attendanceRecord.findMany({
+      where: {
+        enrollment: { studentId: student.id },
+        date: todayDateOnly,
+      },
+    });
+
+    const todayMorning = todayRecords.find((r) => r.session === "MORNING");
+    const todayAfternoon = todayRecords.find((r) => r.session === "AFTERNOON");
+
+    let todayStatus: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED" | "PARTIAL" | "WEEKEND" | "NO_RECORD" = "NO_RECORD";
+    if (todayRecords.length > 0) {
+      if (todayRecords.every((r) => r.status === "ABSENT")) todayStatus = "ABSENT";
+      else if (todayRecords.some((r) => r.status === "LATE")) todayStatus = "LATE";
+      else if (todayRecords.every((r) => r.status === "EXCUSED")) todayStatus = "EXCUSED";
+      else if (todayRecords.every((r) => r.status === "PRESENT")) todayStatus = "PRESENT";
+      else todayStatus = "PARTIAL";
+    } else if (isTodayWeekend) {
+      todayStatus = "WEEKEND";
+    }
+
+    const todayPayload = {
+      date: todayIso,
+      dayName: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][todayDayOfWeek],
+      formattedDate: todayDateOnly.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
+      isWeekend: isTodayWeekend,
+      status: todayStatus,
+      morning: todayMorning ? { status: todayMorning.status, note: todayMorning.note } : null,
+      afternoon: todayAfternoon ? { status: todayAfternoon.status, note: todayAfternoon.note } : null,
+      note: todayMorning?.note || todayAfternoon?.note || null,
+    };
+
+    // Find the latest recorded attendance for student
+    const latestRec = allRecords[0];
+    let latestPayload = null;
+    if (latestRec) {
+      const latDate = latestRec.date;
+      const latDateOnly = new Date(Date.UTC(latDate.getUTCFullYear(), latDate.getUTCMonth(), latDate.getUTCDate()));
+      const latDayOfWeek = latDateOnly.getUTCDay();
+      const latRecs = allRecords.filter((r) => r.date.getTime() === latDate.getTime());
+      const latMorning = latRecs.find((r) => r.session === "MORNING");
+      const latAfternoon = latRecs.find((r) => r.session === "AFTERNOON");
+
+      let latStatus = "PRESENT";
+      if (latRecs.every((r) => r.status === "ABSENT")) latStatus = "ABSENT";
+      else if (latRecs.some((r) => r.status === "LATE")) latStatus = "LATE";
+      else if (latRecs.every((r) => r.status === "EXCUSED")) latStatus = "EXCUSED";
+
+      latestPayload = {
+        date: latDateOnly.toISOString().slice(0, 10),
+        dayName: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][latDayOfWeek],
+        formattedDate: latDateOnly.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
+        status: latStatus,
+        morning: latMorning ? { status: latMorning.status, note: latMorning.note } : null,
+        afternoon: latAfternoon ? { status: latAfternoon.status, note: latAfternoon.note } : null,
+        note: latMorning?.note || latAfternoon?.note || null,
+      };
+    }
+
     res.json({
       student: {
         name: `${student.firstName} ${student.fatherName} ${student.grandfatherName}`.replace(/\s+/g, " ").trim(),
@@ -914,6 +980,8 @@ attendanceRouter.get("/student/attendance", requireAuth, requireRole("STUDENT"),
         section: enrollment.section.name,
         rollNumber: enrollment.rollNumber,
       },
+      today: todayPayload,
+      latestRecordedDay: latestPayload,
       availableMonths,
       selectedMonth,
       monthName: monthStart.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
