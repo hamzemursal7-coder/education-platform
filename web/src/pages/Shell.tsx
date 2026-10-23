@@ -431,6 +431,7 @@ export function SuperAdminHome() {
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [deletedFeedback, setDeletedFeedback] = useState<{ name: string; message: string } | null>(null);
   const [confirmSchool, setConfirmSchool] = useState<Summary["schoolList"][number] | null>(null);
   const [deleteSchool, setDeleteSchool] = useState<Summary["schoolList"][number] | null>(null);
   const [deletePhrase, setDeletePhrase] = useState("");
@@ -492,6 +493,24 @@ export function SuperAdminHome() {
     load().catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load dashboard."));
   }, []);
 
+  useEffect(() => {
+    if (!deletedFeedback) return;
+    const timer = setTimeout(() => setDeletedFeedback(null), 6000);
+    return () => clearTimeout(timer);
+  }, [deletedFeedback]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = setTimeout(() => setMessage(""), 6000);
+    return () => clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
+    if (!error) return;
+    const timer = setTimeout(() => setError(""), 6000);
+    return () => clearTimeout(timer);
+  }, [error]);
+
   async function confirmToggle() {
     if (!confirmSchool) return;
     setError("");
@@ -507,11 +526,14 @@ export function SuperAdminHome() {
 
   async function confirmDeleteSchool() {
     if (!deleteSchool) return;
+    const targetName = deleteSchool.name;
     setError("");
     try {
       await api(`/api/v1/superadmin/schools/${deleteSchool.id}`, { method: "DELETE" });
-      setMessage(`${deleteSchool.name} deleted.`);
       setDeleteSchool(null);
+      setDeletePhrase("");
+      setDeletedFeedback({ name: targetName, message: `${targetName} deleted.` });
+      setMessage(`${targetName} deleted.`);
       await load();
     } catch (caught) {
       setDeleteSchool(null);
@@ -709,7 +731,7 @@ export function SuperAdminHome() {
               Education Management Platform
             </h2>
             <p className="mt-2 text-sm sm:text-base text-slate-300 leading-relaxed">
-              Kormeerka guud iyo maamulka dhammaan dugsiyada ururka, ardayda, macallimiinta, iyo xogta maaliyadeed hal meel.
+             boggan waxa uu sahlayaa Kormeerka guud iyo maamulka dhammaan dugsiyada ururka, ardayda, macallimiinta, iyo xogta maaliyadeed.
             </p>
 
             <div className="mt-4 flex flex-wrap gap-2.5 sm:gap-3 text-xs font-medium text-slate-300">
@@ -1283,8 +1305,72 @@ export function SuperAdminHome() {
 
       {inviteLink ? <PasswordLinkDialog email={inviteLink.email} url={inviteLink.url} onClose={() => setInviteLink(null)} /> : null}
 
-      {message ? <p className="fixed right-5 top-5 z-[60] max-w-md rounded-xl bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{message}</p> : null}
-      {error ? <p className="fixed right-5 top-5 z-[60] max-w-md rounded-xl bg-rose-600 px-4 py-3 text-sm font-medium text-white shadow-xl">{error}</p> : null}
+      {/* Prominent Success Toast with Green Checkmark Tick */}
+      {deletedFeedback ? (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4 transition-all duration-300">
+          <div className="flex items-center gap-3.5 rounded-2xl border border-emerald-300 bg-white p-4 shadow-[0_12px_40px_rgba(16,185,129,0.25)] ring-1 ring-emerald-500/15">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-md shadow-emerald-500/30">
+              <Check className="h-6 w-6 stroke-[3]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-emerald-700">
+                <span>Dugsiga Waa La Tiray</span>
+                <span>·</span>
+                <span className="font-semibold text-emerald-600">Deleted</span>
+              </div>
+              <p className="mt-0.5 text-base font-bold text-slate-900 leading-snug">
+                {deletedFeedback.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDeletedFeedback(null)}
+              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : message ? (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4 transition-all duration-300">
+          <div className="flex items-center gap-3.5 rounded-2xl border border-emerald-300 bg-white p-4 shadow-[0_12px_40px_rgba(16,185,129,0.25)] ring-1 ring-emerald-500/15">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-emerald-500 text-white shadow-md shadow-emerald-500/30">
+              <Check className="h-6 w-6 stroke-[3]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-900">{message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setMessage("")}
+              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[100] w-full max-w-md px-4 transition-all duration-300">
+          <div className="flex items-center gap-3.5 rounded-2xl border border-rose-300 bg-white p-4 shadow-[0_12px_40px_rgba(244,63,94,0.25)] ring-1 ring-rose-500/15">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-rose-500 text-white shadow-md shadow-rose-500/30">
+              <X className="h-5 w-5 stroke-[3]" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-rose-600">Khalad / Error</p>
+              <p className="mt-0.5 text-sm font-bold text-slate-900">{error}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setError("")}
+              className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
