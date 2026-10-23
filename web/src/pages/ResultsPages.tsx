@@ -5,6 +5,7 @@ import {
   ArrowRight,
   BadgeCheck,
   Calendar,
+  CalendarCheck2,
   CheckCircle2,
   FileText,
   GraduationCap,
@@ -784,23 +785,34 @@ export function StudentResultsPage() {
                 </div>
               </div>
 
-              {/* Academic Year Switcher */}
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-1.5 text-xs text-slate-700 shadow-sm self-stretch sm:self-auto">
-                <Calendar className="h-3.5 w-3.5 text-blue-600 shrink-0" />
-                <span className="font-medium text-slate-500">Year:</span>
-                <select
-                  className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer"
-                  value={yearId || data?.year?.id || ""}
-                  onChange={(event) => setYearId(event.target.value)}
+              {/* Controls: Attendance Link & Year Switcher */}
+              <div className="flex flex-wrap items-center gap-2 self-stretch sm:self-auto">
+                <Link
+                  to="/student/attendance"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"
                 >
-                  {(data?.years ?? []).map((year) => (
-                    <option key={year.id} value={year.id}>
-                      {year.name}
-                      {year.isCurrent ? " (Current Year)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <CalendarCheck2 className="h-3.5 w-3.5 text-blue-600" />
+                  My Attendance
+                </Link>
+
+                {/* Academic Year Switcher */}
+                <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-1.5 text-xs text-slate-700 shadow-sm">
+                  <Calendar className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                  <span className="font-medium text-slate-500">Year:</span>
+                  <select
+                    className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer"
+                    value={yearId || data?.year?.id || ""}
+                    onChange={(event) => setYearId(event.target.value)}
+                  >
+                    {(data?.years ?? []).map((year) => (
+                      <option key={year.id} value={year.id}>
+                        {year.name}
+                        {year.isCurrent ? " (Current Year)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             </div>
           </section>
 

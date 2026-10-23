@@ -655,3 +655,292 @@ attendanceRouter.patch("/attendance-records/:id", requireAuth, requireRole("SCHO
     next(error);
   }
 });
+
+attendanceRouter.get("/student/attendance", requireAuth, requireRole("STUDENT"), async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.authUser!.id } });
+    if (!user) throw new HttpError(403, "You are not allowed to access this record.");
+
+    const empty = {
+      student: null,
+      years: [],
+      year: null,
+      availableMonths: [],
+      selectedMonth: "",
+      monthName: "",
+      summary: null,
+      days: [],
+      dailyLog: [],
+      yearSummary: { attendanceRate: null, totalSessions: 0, presentSessions: 0, absentSessions: 0, lateSessions: 0, excusedSessions: 0, months: [] },
+    };
+
+    if (!user.personKey && !user.phone) {
+      res.json(empty);
+      return;
+    }
+
+    const student = await prisma.student.findFirst({
+      where: {
+        OR: [
+          ...(user.personKey ? [{ permanentId: user.personKey }, { secondaryPermanentId: user.personKey }] : []),
+          ...(user.phone ? [{ phone: user.phone }] : []),
+        ],
+      },
+      include: {
+        enrollments: {
+          where: user.schoolId ? { schoolId: user.schoolId } : {},
+          include: {
+            school: true,
+            academicYear: true,
+            classGroup: true,
+            section: true,
+          },
+          orderBy: { academicYear: { startDate: "desc" } },
+        },
+      },
+    });
+
+    if (!student || !student.enrollments.length) {
+      res.json(empty);
+      return;
+    }
+
+    const requestedYear = typeof req.query.academicYearId === "string" ? req.query.academicYearId : "";
+    const enrollment = student.enrollments.find((row) => row.academicYearId === requestedYear)
+      ?? student.enrollments.find((row) => row.academicYear.isCurrent)
+      ?? student.enrollments[0];
+
+    // Load all attendance records for this enrollment
+    const allRecords = await prisma.attendanceRecord.findMany({
+      where: { enrollmentId: enrollment.id },
+      orderBy: [{ date: "asc" }, { session: "asc" }],
+    });
+
+    // Determine available months in this academic year
+    const startYear = enrollment.academicYear.startDate.getUTCFullYear();
+    const startMonth = enrollment.academicYear.startDate.getUTCMonth();
+    const endYear = enrollment.academicYear.endDate.getUTCFullYear();
+    const endMonth = enrollment.academicYear.endDate.getUTCMonth();
+
+    const monthsSet = new Set<string>();
+    let curY = startYear;
+    let curM = startMonth;
+    while (curY < endYear || (curY === endYear && curM <= endMonth)) {
+      const monthStr = `${curY}-${String(curM + 1).padStart(2, "0")}`;
+      monthsSet.add(monthStr);
+      curM++;
+      if (curM > 11) {
+        curM = 0;
+        curY++;
+      }
+    }
+    for (const r of allRecords) {
+      monthsSet.add(r.date.toISOString().slice(0, 7));
+    }
+
+    const availableMonths = [...monthsSet].sort();
+
+    // Determine active selected month
+    let selectedMonth = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
+      ? req.query.month
+      : "";
+
+    if (!selectedMonth || !availableMonths.includes(selectedMonth)) {
+      const recordedMonths = [...new Set(allRecords.map((r) => r.date.toISOString().slice(0, 7)))].sort();
+      selectedMonth = recordedMonths.at(-1) || availableMonths.at(-1) || new Date().toISOString().slice(0, 7);
+    }
+
+    const monthStart = new Date(`${selectedMonth}-01T00:00:00.000Z`);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
+
+    const monthRecords = allRecords.filter((r) => r.date >= monthStart && r.date < monthEnd);
+
+    // Metrics for the month
+    const countSession = (st: string) => monthRecords.filter((r) => r.status === st).length;
+    const presentSessions = countSession("PRESENT");
+    const absentSessions = countSession("ABSENT");
+    const lateSessions = countSession("LATE");
+    const excusedSessions = countSession("EXCUSED");
+    const totalSessions = monthRecords.length;
+
+    const daysInMonth = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0)).getUTCDate();
+
+    const recordsByDay = new Map<string, typeof monthRecords>();
+    for (const r of monthRecords) {
+      const dayKey = r.date.toISOString().slice(0, 10);
+      const list = recordsByDay.get(dayKey) ?? [];
+      list.push(r);
+      recordsByDay.set(dayKey, list);
+    }
+
+    const calendarDays = [];
+    let uniquePresentDays = 0;
+    let uniqueAbsentDays = 0;
+    let uniqueRecordedDays = 0;
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dayDate = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), d));
+      const dateStr = dayDate.toISOString().slice(0, 10);
+      const dayOfWeek = dayDate.getUTCDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+      const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
+      const dayRecords = recordsByDay.get(dateStr) ?? [];
+
+      const morning = dayRecords.find((r) => r.session === "MORNING") ?? null;
+      const afternoon = dayRecords.find((r) => r.session === "AFTERNOON") ?? null;
+
+      let dayStatus: "PRESENT" | "ABSENT" | "LATE" | "EXCUSED" | "PARTIAL" | "WEEKEND" | "NO_RECORD" = "NO_RECORD";
+
+      if (isWeekend) {
+        dayStatus = "WEEKEND";
+      } else if (dayRecords.length > 0) {
+        uniqueRecordedDays++;
+        const hasPresent = dayRecords.some((r) => r.status === "PRESENT");
+        const hasLate = dayRecords.some((r) => r.status === "LATE");
+        const hasExcused = dayRecords.some((r) => r.status === "EXCUSED");
+        const allAbsent = dayRecords.every((r) => r.status === "ABSENT");
+
+        if (dayRecords.every((r) => r.status === "PRESENT")) {
+          dayStatus = "PRESENT";
+          uniquePresentDays++;
+        } else if (allAbsent) {
+          dayStatus = "ABSENT";
+          uniqueAbsentDays++;
+        } else if (hasExcused && !hasPresent && !hasLate) {
+          dayStatus = "EXCUSED";
+        } else if (hasLate) {
+          dayStatus = "LATE";
+          uniquePresentDays++;
+        } else if (hasPresent) {
+          dayStatus = "PARTIAL";
+          uniquePresentDays++;
+        }
+      }
+
+      calendarDays.push({
+        date: dateStr,
+        dayNumber: d,
+        dayOfWeek,
+        dayName: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][dayOfWeek],
+        isWeekend,
+        isSchoolDay: !isWeekend,
+        dayStatus,
+        morning: morning ? { status: morning.status, note: morning.note } : null,
+        afternoon: afternoon ? { status: afternoon.status, note: afternoon.note } : null,
+      });
+    }
+
+    // Daily chronological log
+    const dailyLog = [...recordsByDay.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([dateStr, recs]) => {
+        const dObj = new Date(`${dateStr}T00:00:00.000Z`);
+        const dayOfWeek = dObj.getUTCDay();
+        const morning = recs.find((r) => r.session === "MORNING");
+        const afternoon = recs.find((r) => r.session === "AFTERNOON");
+
+        let overall = "PRESENT";
+        if (recs.every((r) => r.status === "ABSENT")) overall = "ABSENT";
+        else if (recs.some((r) => r.status === "LATE")) overall = "LATE";
+        else if (recs.every((r) => r.status === "EXCUSED")) overall = "EXCUSED";
+        else if (recs.some((r) => r.status === "PRESENT")) overall = "PRESENT";
+
+        return {
+          date: dateStr,
+          dayName: ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][dayOfWeek],
+          formattedDate: dObj.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }),
+          overall,
+          morning: morning ? { status: morning.status, note: morning.note } : null,
+          afternoon: afternoon ? { status: afternoon.status, note: afternoon.note } : null,
+          note: morning?.note || afternoon?.note || null,
+        };
+      });
+
+    const monthRate = totalSessions > 0
+      ? Math.round(((presentSessions + lateSessions * 0.75 + excusedSessions) / totalSessions) * 100)
+      : null;
+
+    // Academic Year overall stats
+    const yearPresent = allRecords.filter((r) => r.status === "PRESENT").length;
+    const yearLate = allRecords.filter((r) => r.status === "LATE").length;
+    const yearExcused = allRecords.filter((r) => r.status === "EXCUSED").length;
+    const yearAbsent = allRecords.filter((r) => r.status === "ABSENT").length;
+    const yearTotal = allRecords.length;
+    const yearRate = yearTotal > 0
+      ? Math.round(((yearPresent + yearLate * 0.75 + yearExcused) / yearTotal) * 100)
+      : null;
+
+    const monthTrend = availableMonths.map((m) => {
+      const mRecs = allRecords.filter((r) => r.date.toISOString().slice(0, 7) === m);
+      const mPres = mRecs.filter((r) => r.status === "PRESENT").length;
+      const mLate = mRecs.filter((r) => r.status === "LATE").length;
+      const mExc = mRecs.filter((r) => r.status === "EXCUSED").length;
+      const mAbs = mRecs.filter((r) => r.status === "ABSENT").length;
+      const mTot = mRecs.length;
+      const mRate = mTot > 0 ? Math.round(((mPres + mLate * 0.75 + mExc) / mTot) * 100) : null;
+      const dObj = new Date(`${m}-01T00:00:00.000Z`);
+      return {
+        month: m,
+        monthName: dObj.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+        totalSessions: mTot,
+        present: mPres,
+        absent: mAbs,
+        late: mLate,
+        excused: mExc,
+        rate: mRate,
+      };
+    }).filter((item) => item.totalSessions > 0);
+
+    res.json({
+      student: {
+        name: `${student.firstName} ${student.fatherName} ${student.grandfatherName}`.replace(/\s+/g, " ").trim(),
+        permanentId: student.secondaryPermanentId ?? student.permanentId,
+        photoUrl: student.photoUrl,
+        status: student.status,
+      },
+      years: student.enrollments.map((e) => ({
+        id: e.academicYearId,
+        name: e.academicYear.name,
+        isCurrent: e.academicYear.isCurrent,
+        level: levelLabel(e.classGroup.level),
+        section: e.section.name,
+      })),
+      year: {
+        id: enrollment.academicYearId,
+        name: enrollment.academicYear.name,
+        isCurrent: enrollment.academicYear.isCurrent,
+        school: enrollment.school.name,
+        level: levelLabel(enrollment.classGroup.level),
+        section: enrollment.section.name,
+        rollNumber: enrollment.rollNumber,
+      },
+      availableMonths,
+      selectedMonth,
+      monthName: monthStart.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+      summary: {
+        attendanceRate: monthRate,
+        totalSessions,
+        presentSessions,
+        absentSessions,
+        lateSessions,
+        excusedSessions,
+        recordedDays: uniqueRecordedDays,
+        presentDays: uniquePresentDays,
+        absentDays: uniqueAbsentDays,
+      },
+      days: calendarDays,
+      dailyLog,
+      yearSummary: {
+        attendanceRate: yearRate,
+        totalSessions: yearTotal,
+        presentSessions: yearPresent,
+        absentSessions: yearAbsent,
+        lateSessions: yearLate,
+        excusedSessions: yearExcused,
+        months: monthTrend,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});

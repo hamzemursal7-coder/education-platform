@@ -251,6 +251,7 @@ export function Shell({
               : user.role === "STUDENT"
                 ? [
                     { to: "/student/dashboard", label: "Dashboard", icon: "dashboard" },
+                    { to: "/student/attendance", label: "Attendance", icon: "attendance" },
                     { to: "/student/announcements", label: "Announcements", icon: "announcements" },
                   ]
                 : [{ to: "/superadmin/dashboard", label: "Dashboard", icon: "dashboard" }];

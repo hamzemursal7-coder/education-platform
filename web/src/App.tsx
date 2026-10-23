@@ -24,6 +24,7 @@ import { FeesPage } from "./pages/FeesPage";
 import { ParentChildPage, ParentDashboard, ParentAttendancePage, ParentFeesPage, SchoolParentProfilePage, SchoolParentsPage } from "./pages/ParentPages";
 import { TransfersPage } from "./pages/TransferPages";
 import { ExamsPage, StudentResultsPage } from "./pages/ResultsPages";
+import { StudentAttendancePage } from "./pages/StudentAttendancePage";
 import { TeacherAssignmentsPage, TeacherDashboard, TeacherExamsPage, TeacherMarksPage, TeacherProfilePage as MyTeacherProfile, TeacherSchoolsPage } from "./pages/TeacherPortalPages";
 import { ResultsBoardPage } from "./pages/MarksPages";
 import { AnnouncementsInboxPage, SchoolAnnouncementsPage } from "./pages/AnnouncementPages";
@@ -105,6 +106,7 @@ export function App() {
       <Route path="/accountant/announcements" element={<Protected user={user} role="ACCOUNTANT" title="Announcements"><AnnouncementsInboxPage /></Protected>} />
       <Route path="/staff/announcements" element={<Protected user={user} role="STAFF" title="Announcements"><AnnouncementsInboxPage /></Protected>} />
       <Route path="/student/dashboard" element={<Protected user={user} role="STUDENT" title="Dashboard"><StudentResultsPage /></Protected>} />
+      <Route path="/student/attendance" element={<Protected user={user} role="STUDENT" title="Attendance"><StudentAttendancePage /></Protected>} />
       <Route path="/student/announcements" element={<Protected user={user} role="STUDENT" title="Announcements"><AnnouncementsInboxPage /></Protected>} />
       <Route path="/superadmin" element={<PortalIndex user={user} role="SUPER_ADMIN" to="/superadmin/dashboard" />} />
       <Route path="/school" element={<PortalIndex user={user} role="SCHOOL_ADMIN" to="/school/dashboard" />} />
