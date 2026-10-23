@@ -536,8 +536,8 @@ export function ResultsBoardPage() {
             </p>
           </div>
 
-          {/* EYE-CATCHING PROMINENT PUBLISH BUTTON */}
-          <div className="flex flex-col items-start gap-2.5 sm:items-end">
+          {/* COMPACT & ELEGANT BLUE PUBLISH BUTTON */}
+          <div className="flex flex-col items-start gap-2 sm:items-end">
             <button
               type="button"
               disabled={!exam || busy || readyCount === 0}
@@ -549,28 +549,19 @@ export function ResultsBoardPage() {
                   .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not fetch publish scope."))
                   .finally(() => setBusy(false));
               }}
-              className={`group relative inline-flex items-center gap-3 overflow-hidden rounded-2xl px-6 py-4 text-base font-extrabold text-white shadow-xl transition-all duration-300 ${
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
                 readyCount > 0
-                  ? "bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 shadow-emerald-500/30 hover:scale-[1.02] active:scale-[0.98]"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300 shadow-none"
+                  ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-500/25 active:scale-95"
+                  : "bg-blue-50 text-blue-700 border border-blue-200 cursor-not-allowed hover:bg-blue-100/70"
               }`}
             >
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/20 text-white shadow-inner">
-                <Send className="h-5 w-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-              </div>
-              <div className="text-left">
-                <span className="block text-xs uppercase tracking-wider text-emerald-100 font-semibold">Live Publishing</span>
-                <span className="text-lg font-black tracking-wide">Publish Results to Portal</span>
-              </div>
-              {readyCount > 0 ? (
-                <span className="ml-1 inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-black text-emerald-800 shadow-sm animate-pulse">
-                  {readyCount} ready
-                </span>
-              ) : (
-                <span className="ml-1 inline-flex items-center rounded-full bg-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                  0 ready
-                </span>
-              )}
+              <Send className="h-4 w-4" />
+              <span>Publish Results to Portal</span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                readyCount > 0 ? "bg-white text-blue-700 shadow-sm" : "bg-blue-200/80 text-blue-800"
+              }`}>
+                {readyCount} ready
+              </span>
             </button>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
@@ -1475,7 +1466,7 @@ export function ResultsBoardPage() {
                 type="button"
                 disabled={busy || preview.ready === 0}
                 onClick={() => void handleConfirmPublish()}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-2.5 text-sm font-bold text-white hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-600/30 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-500 shadow-md shadow-blue-600/25 disabled:opacity-50"
               >
                 <Send className="h-4 w-4" /> Confirm & Publish
               </button>
