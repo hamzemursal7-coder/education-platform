@@ -650,6 +650,19 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
         ],
       },
       include: {
+        guardians: {
+          include: {
+            guardian: {
+              select: {
+                firstName: true,
+                lastName: true,
+                phone: true,
+                email: true,
+                nationalId: true,
+              },
+            },
+          },
+        },
         enrollments: {
           where: user.schoolId ? { schoolId: user.schoolId } : {},
           include: {
@@ -679,11 +692,26 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
         ...empty,
         student: {
           name: `${student.firstName} ${student.fatherName} ${student.grandfatherName}`.replace(/\s+/g, " ").trim(),
+          firstName: student.firstName,
+          fatherName: student.fatherName,
+          grandfatherName: student.grandfatherName,
           permanentId: student.secondaryPermanentId ?? student.permanentId,
           photoUrl: student.photoUrl,
           dateOfBirth: student.dateOfBirth,
+          email: user.email,
+          phone: student.phone ?? user.phone ?? null,
+          nationalId: student.nationalId ?? null,
+          gender: student.gender ?? null,
+          status: student.status ?? "ACTIVE",
           rollNumber: null,
           initials: `${student.firstName[0] ?? ""}${student.grandfatherName[0] ?? student.fatherName[0] ?? ""}`.toUpperCase(),
+          guardians: (student.guardians ?? []).map((g) => ({
+            relationship: g.relationship,
+            name: `${g.guardian.firstName} ${g.guardian.lastName}`.trim(),
+            phone: g.guardian.phone,
+            email: g.guardian.email,
+            nationalId: g.guardian.nationalId,
+          })),
         },
       });
       return;
@@ -752,11 +780,26 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
     res.json({
       student: {
         name: `${student.firstName} ${student.fatherName} ${student.grandfatherName}`.replace(/\s+/g, " ").trim(),
+        firstName: student.firstName,
+        fatherName: student.fatherName,
+        grandfatherName: student.grandfatherName,
         permanentId: student.secondaryPermanentId ?? student.permanentId,
         photoUrl: student.photoUrl,
         dateOfBirth: student.dateOfBirth,
+        email: user.email,
+        phone: student.phone ?? user.phone ?? null,
+        nationalId: student.nationalId ?? null,
+        gender: student.gender ?? null,
+        status: student.status ?? "ACTIVE",
         rollNumber: enrollment.rollNumber,
         initials: `${student.firstName[0] ?? ""}${student.grandfatherName[0] ?? student.fatherName[0] ?? ""}`.toUpperCase(),
+        guardians: (student.guardians ?? []).map((g) => ({
+          relationship: g.relationship,
+          name: `${g.guardian.firstName} ${g.guardian.lastName}`.trim(),
+          phone: g.guardian.phone,
+          email: g.guardian.email,
+          nationalId: g.guardian.nationalId,
+        })),
       },
       years: student.enrollments.map((row) => ({
         id: row.academicYearId,

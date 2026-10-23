@@ -1,6 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Calendar, FileText, GraduationCap, School, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BadgeCheck,
+  Calendar,
+  CheckCircle2,
+  FileText,
+  GraduationCap,
+  Hash,
+  IdCard,
+  Mail,
+  Phone,
+  School,
+  ShieldCheck,
+  Sparkles,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { api } from "../lib/api";
 
 type SubjectOption = { id: string; name: string; code: string };
@@ -530,7 +547,26 @@ type StudentTerm = {
 };
 
 type StudentDashboard = {
-  student: { name: string; permanentId: string; photoUrl: string | null; initials: string; dateOfBirth?: string; rollNumber?: number | null } | null;
+  student: {
+    name: string;
+    permanentId: string;
+    photoUrl: string | null;
+    initials: string;
+    dateOfBirth?: string;
+    email?: string;
+    phone?: string | null;
+    nationalId?: string | null;
+    gender?: string | null;
+    status?: string;
+    rollNumber?: number | null;
+    guardians?: Array<{
+      relationship: string;
+      name: string;
+      phone: string;
+      email?: string | null;
+      nationalId?: string | null;
+    }>;
+  } | null;
   years: Array<{ id: string; name: string; isCurrent: boolean }>;
   year: {
     id: string;
@@ -596,33 +632,49 @@ function SummaryMetric({
   detail?: string;
 }) {
   const styles = {
-    sky: { card: "border-sky-100 bg-sky-50", icon: "bg-blue-600", ring: "#2563eb" },
-    amber: { card: "border-amber-100 bg-amber-50", icon: "bg-amber-500", ring: "#d97706" },
-    emerald: { card: "border-emerald-100 bg-emerald-50", icon: "bg-emerald-600", ring: "#059669" },
+    sky: {
+      card: "border-sky-100/90 bg-gradient-to-br from-white via-sky-50/40 to-blue-50/25 shadow-sm hover:shadow transition-shadow",
+      icon: "bg-blue-600 text-white shadow-sm shadow-blue-200",
+      ring: "#2563eb",
+    },
+    amber: {
+      card: "border-amber-100/90 bg-gradient-to-br from-white via-amber-50/40 to-orange-50/25 shadow-sm hover:shadow transition-shadow",
+      icon: "bg-amber-500 text-white shadow-sm shadow-amber-200",
+      ring: "#d97706",
+    },
+    emerald: {
+      card: "border-emerald-100/90 bg-gradient-to-br from-white via-emerald-50/40 to-teal-50/25 shadow-sm hover:shadow transition-shadow",
+      icon: "bg-emerald-600 text-white shadow-sm shadow-emerald-200",
+      ring: "#059669",
+    },
   }[tone];
   const waiting = term.subjectCount === 0;
   return (
-    <article className={`flex h-full items-center justify-between gap-3 rounded-2xl border p-4 shadow-sm ${styles.card}`}>
-      <div className="min-w-0">
+    <article className={`flex h-full items-center justify-between gap-3.5 rounded-2xl border p-4 ${styles.card}`}>
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className={`grid h-8 w-8 place-items-center rounded-lg text-white ${styles.icon}`}>
-            <GraduationCap className="h-4 w-4" />
+          <span className={`grid h-7 w-7 place-items-center rounded-lg ${styles.icon}`}>
+            <GraduationCap className="h-3.5 w-3.5" />
           </span>
-          <p className="text-sm font-medium text-slate-600">{term.label} Average</p>
+          <p className="text-xs font-bold text-slate-700">{term.label} Average</p>
         </div>
         {waiting ? (
           <>
-            <p className={`mt-3 text-lg font-semibold ${term.examConfigured ? "text-amber-700" : "text-slate-600"}`}>{term.examConfigured ? "Not Yet Published" : "Not available"}</p>
-            <p className="mt-1 text-xs text-slate-500">{term.examConfigured ? "Results will appear once published" : "This exam has not been set up"}</p>
+            <p className={`mt-2 text-sm sm:text-base font-bold tracking-tight ${term.examConfigured ? "text-amber-700" : "text-slate-700"}`}>
+              {term.examConfigured ? "Not Yet Published" : "Not available"}
+            </p>
+            <p className="mt-0.5 text-[11px] text-slate-500">{term.examConfigured ? "Results will appear once published" : "This exam has not been set up"}</p>
           </>
         ) : (
           <>
-            <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">{formatPercent(term.average)}</p>
-            <p className="mt-1 text-xs text-slate-500">{detail ?? `${term.status === "final" ? "Final" : "Provisional"} · ${term.publishedCount ?? term.subjectCount}/${term.subjectCount} published${term.possible ? ` · ${term.obtained ?? 0}/${term.possible}` : ""}`}</p>
+            <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">{formatPercent(term.average)}</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">{detail ?? `${term.status === "final" ? "Final" : "Provisional"} · ${term.publishedCount ?? term.subjectCount}/${term.subjectCount} published${term.possible ? ` · ${term.obtained ?? 0}/${term.possible}` : ""}`}</p>
           </>
         )}
       </div>
-      <AverageRing value={waiting ? null : term.average} color={styles.ring} />
+      <div className="shrink-0">
+        <AverageRing value={waiting ? null : term.average} color={styles.ring} />
+      </div>
     </article>
   );
 }
@@ -667,147 +719,357 @@ export function StudentResultsPage() {
     examConfigured: (data?.terms ?? []).some((term) => term.examConfigured),
   };
 
+  const primaryGuardian = data?.student?.guardians?.[0];
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
-          <Calendar className="h-4 w-4 text-blue-600" />
-          <span className="font-medium text-slate-500">Academic Year</span>
-          <select
-            className="bg-transparent font-semibold text-slate-900 outline-none"
-            value={yearId || data?.year?.id || ""}
-            onChange={(event) => setYearId(event.target.value)}
-          >
-            {(data?.years ?? []).map((year) => (
-              <option key={year.id} value={year.id}>{year.name}{year.isCurrent ? " (Current Year)" : ""}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-
       {error ? <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p> : null}
-      {loading && !data ? <p className="rounded-2xl border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500">Loading your results…</p> : null}
+      {loading && !data ? <p className="rounded-2xl border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500">Loading your profile & results…</p> : null}
 
-      {data?.student && data.year ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-start gap-4">
-            {data.student.photoUrl ? (
-              <img src={data.student.photoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
-            ) : (
-              <span className="grid h-16 w-16 place-items-center rounded-full bg-blue-600 text-lg font-semibold text-white">{data.student.initials || "S"}</span>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-semibold text-slate-950">{data.student.name}</h2>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">{data.year.status}</span>
+      {/* 1. Student Profile & Parent Details Section */}
+      {data?.student ? (
+        <div className="space-y-3.5">
+          {/* Top Compact Hero Banner */}
+          <section className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-4.5 shadow-sm">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5">
+              <div className="flex items-center gap-3.5">
+                {data.student.photoUrl ? (
+                  <img
+                    src={data.student.photoUrl}
+                    alt={data.student.name}
+                    className="h-13 w-13 sm:h-14 sm:w-14 rounded-xl object-cover ring-2 ring-blue-100 shadow-sm"
+                  />
+                ) : (
+                  <div className="grid h-12 w-12 sm:h-14 sm:w-14 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm ring-2 ring-blue-100">
+                    <UserRound className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
+                  </div>
+                )}
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900">
+                      {data.student.name}
+                    </h1>
+                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+                      data.student.status === "ALUMNI"
+                        ? "bg-purple-50 text-purple-700 ring-purple-600/20"
+                        : "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
+                    }`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${data.student.status === "ALUMNI" ? "bg-purple-600" : "bg-emerald-500 animate-pulse"}`} />
+                      {data.student.status ?? data.year?.status ?? "ACTIVE"}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-0.5 font-medium text-slate-700 ring-1 ring-slate-200/60">
+                      <Hash className="h-3 w-3 text-blue-600" />
+                      ID: <span className="font-semibold text-slate-900">{data.student.permanentId}</span>
+                    </span>
+                    {data.student.rollNumber != null ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-0.5 font-medium text-slate-700 ring-1 ring-slate-200/60">
+                        Roll: <span className="font-semibold text-slate-900">#{data.student.rollNumber}</span>
+                      </span>
+                    ) : null}
+                    {data.year?.school ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-0.5 font-medium text-slate-700 ring-1 ring-slate-200/60">
+                        <School className="h-3 w-3 text-blue-600" />
+                        {data.year.school}
+                      </span>
+                    ) : null}
+                    {data.year ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 ring-1 ring-blue-100">
+                        <GraduationCap className="h-3 w-3" />
+                        {data.year.level} · Section {data.year.section}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-              <p className="mt-1 text-sm text-slate-500">ID {data.student.permanentId} · Roll {data.student.rollNumber ?? "—"} · Age {ageFrom(data.student.dateOfBirth) ?? "—"}</p>
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-600">
-                <span className="inline-flex items-center gap-1.5"><School className="h-4 w-4 text-blue-600" />{data.year.school}</span>
-                <span className="inline-flex items-center gap-1.5"><GraduationCap className="h-4 w-4 text-blue-600" />{data.year.level}</span>
-                <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4 text-blue-600" />Section {data.year.section}</span>
-                <span className="inline-flex items-center gap-1.5"><Calendar className="h-4 w-4 text-blue-600" />{data.year.name}{data.year.isCurrent ? " · Current year" : ""}</span>
-                {data.year.teachers.length ? (
-                  <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4 text-blue-600" />{data.year.teachers.length === 1 ? "Class teacher" : "Teachers"}: {data.year.teachers.join(", ")}</span>
+
+              {/* Academic Year Switcher */}
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-1.5 text-xs text-slate-700 shadow-sm self-stretch sm:self-auto">
+                <Calendar className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                <span className="font-medium text-slate-500">Year:</span>
+                <select
+                  className="bg-transparent font-semibold text-slate-900 outline-none cursor-pointer"
+                  value={yearId || data?.year?.id || ""}
+                  onChange={(event) => setYearId(event.target.value)}
+                >
+                  {(data?.years ?? []).map((year) => (
+                    <option key={year.id} value={year.id}>
+                      {year.name}
+                      {year.isCurrent ? " (Current Year)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+
+          {/* Side-by-Side Compact Info Cards: Student & Parent */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+            {/* Card 1: Student Information */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white p-3.5 sm:p-4 shadow-sm hover:shadow transition-shadow">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-6 w-6 place-items-center rounded-lg bg-blue-50 text-blue-600">
+                    <UserRound className="h-3.5 w-3.5" />
+                  </span>
+                  <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Student Information</h2>
+                </div>
+                <span className="text-[11px] font-medium text-slate-400">Personal Details</span>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2.5">
+                {/* Birthday */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <Calendar className="h-3.5 w-3.5 text-blue-600" />
+                    Date of Birth
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900">
+                    {data.student.dateOfBirth ? prettyDate(data.student.dateOfBirth) : "—"}
+                  </p>
+                </div>
+
+                {/* Student Mobile Phone */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <Phone className="h-3.5 w-3.5 text-emerald-600" />
+                    Mobile / Phone
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 truncate" title={data.student.phone || "—"}>
+                    {data.student.phone || "—"}
+                  </p>
+                </div>
+
+                {/* Email */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <Mail className="h-3.5 w-3.5 text-violet-600" />
+                    Email
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 truncate" title={data.student.email ?? "—"}>
+                    {data.student.email ?? "—"}
+                  </p>
+                </div>
+
+                {/* Gender */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <UserRound className="h-3.5 w-3.5 text-amber-600" />
+                    Gender
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900">
+                    {data.student.gender
+                      ? data.student.gender === "MALE"
+                        ? "Male"
+                        : data.student.gender === "FEMALE"
+                          ? "Female"
+                          : data.student.gender
+                      : "—"}
+                  </p>
+                </div>
+
+                {/* Student NIRA */}
+                <div className="col-span-2 rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
+                    National ID / NIRA
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900">
+                    {data.student.nationalId || "—"}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* Card 2: Parent / Guardian Information */}
+            <section className="rounded-2xl border border-slate-200/80 bg-white p-3.5 sm:p-4 shadow-sm hover:shadow transition-shadow">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-6 w-6 place-items-center rounded-lg bg-indigo-50 text-indigo-600">
+                    <Users className="h-3.5 w-3.5" />
+                  </span>
+                  <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wide">Parent / Guardian Information</h2>
+                </div>
+                {primaryGuardian?.relationship ? (
+                  <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-200">
+                    {primaryGuardian.relationship}
+                  </span>
                 ) : null}
               </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
 
-      {data?.terms.length ? (
-        <div className="grid gap-4 lg:grid-cols-3">
-          {data.terms.map((term) => (
-            <SummaryMetric key={term.term} term={term} tone={term.term === "TERM_1" ? "sky" : "amber"} />
-          ))}
-          <SummaryMetric term={yearAverageTerm} tone="emerald" />
+              <div className="mt-3 grid grid-cols-2 gap-2.5">
+                {/* Parent Name */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <UserRound className="h-3.5 w-3.5 text-indigo-600" />
+                    Parent Name
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 truncate" title={primaryGuardian?.name ?? "—"}>
+                    {primaryGuardian?.name ?? "—"}
+                  </p>
+                </div>
+
+                {/* Phone */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <Phone className="h-3.5 w-3.5 text-emerald-600" />
+                    Phone Number
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 truncate" title={primaryGuardian?.phone ?? "—"}>
+                    {primaryGuardian?.phone ?? "—"}
+                  </p>
+                </div>
+
+                {/* Parent Email */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <Mail className="h-3.5 w-3.5 text-violet-600" />
+                    Parent Email
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 truncate" title={primaryGuardian?.email ?? "—"}>
+                    {primaryGuardian?.email ?? "—"}
+                  </p>
+                </div>
+
+                {/* Parent NIRA */}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-2.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                    <ShieldCheck className="h-3.5 w-3.5 text-blue-600" />
+                    Parent NIRA
+                  </div>
+                  <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-900 truncate" title={primaryGuardian?.nationalId ?? "—"}>
+                    {primaryGuardian?.nationalId || "—"}
+                  </p>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       ) : null}
 
+
+      {/* 3. Term 1 & Term 2 Results Cards - Compact & Small across all devices */}
       {data?.terms.length ? (
-        <div className="grid items-stretch gap-4 lg:grid-cols-2">
+        <div className="grid gap-3.5 lg:grid-cols-2 items-start">
           {data.terms.map((term) => {
             const publishedOn = formatPublishedOn(term.publishedAt);
-            return (
-              <section key={term.term} className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <header className="flex min-h-[4.75rem] items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sky-50 text-blue-600">
-                      <FileText className="h-5 w-5" />
+            if (!term.subjects.length) {
+              return (
+                <div
+                  key={term.term}
+                  className="rounded-2xl border border-slate-200/80 bg-white p-3 sm:p-3.5 shadow-sm hover:shadow transition-shadow flex items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 ring-1 ring-blue-100/60">
+                      <FileText className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
-                      <h3 className="text-base font-semibold text-slate-950">{term.label} Results</h3>
-                      <p className="text-sm text-slate-500">{term.examLabel ?? "No exam configured"}</p>
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate">{term.label} Results</h3>
+                      <p className="text-[11px] text-slate-500 truncate">{term.examLabel ?? "No exam configured"}</p>
+                    </div>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+                      term.examConfigured
+                        ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                        : "bg-slate-100 text-slate-500 ring-slate-200/70"
+                    }`}
+                  >
+                    {term.examConfigured ? "Not Yet Published" : "Not available"}
+                  </span>
+                </div>
+              );
+            }
+
+            return (
+              <section key={term.term} className="flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm hover:shadow transition-shadow overflow-hidden">
+                <header className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/50 px-3.5 sm:px-4 py-2.5">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="grid h-7 w-7 sm:h-8 sm:w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600 shadow-sm ring-1 ring-blue-100">
+                      <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-900">{term.label} Results</h3>
+                      <p className="text-[11px] text-slate-500">{term.examLabel ?? "Term exam"}</p>
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
                     {term.published ? (
-                      <>
-                        <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Published</span>
-                        {publishedOn ? <p className="mt-1 text-xs text-slate-500">Published on {publishedOn}</p> : null}
-                      </>
+                      <div className="flex flex-col items-end">
+                        <span className="inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                          Published
+                        </span>
+                        {publishedOn ? (
+                          <p className="text-[10px] text-slate-400 mt-0.5">{publishedOn}</p>
+                        ) : null}
+                      </div>
                     ) : (
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${term.examConfigured ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold ring-1 ring-inset ${term.examConfigured ? "bg-amber-50 text-amber-700 ring-amber-600/20" : "bg-slate-100 text-slate-600 ring-slate-200"}`}>
                         {term.examConfigured ? "Not Yet Published" : "Not available"}
                       </span>
                     )}
                   </div>
                 </header>
-                {term.subjects.length ? (
-                  <div className="overflow-x-auto px-3 py-3">
-                    <table className="w-full min-w-[520px] border-separate border-spacing-0 text-sm">
-                      <thead>
-                        <tr className="text-left text-xs font-medium uppercase tracking-wide text-slate-500">
-                          <th className="border-b border-slate-200 px-3 py-2">#</th>
-                          <th className="border-b border-slate-200 px-3 py-2">Subject</th>
-                          <th className="border-b border-slate-200 px-3 py-2">Max Marks</th>
-                          <th className="border-b border-slate-200 px-3 py-2">Marks Obtained</th>
-                          <th className="border-b border-slate-200 px-3 py-2">Percentage</th>
+                <div className="px-2 sm:px-3 py-1 sm:py-1.5">
+                  <table className="w-full border-separate border-spacing-0 text-xs sm:text-sm">
+                    <thead>
+                      <tr className="text-left text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                        <th className="border-b border-slate-100 px-2 sm:px-2.5 py-1.5 w-8">#</th>
+                        <th className="border-b border-slate-100 px-2 sm:px-2.5 py-1.5">Subject</th>
+                        <th className="border-b border-slate-100 px-2 sm:px-2.5 py-1.5 text-right">Percentage</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {term.subjects.map((row, index) => (
+                        <tr key={`${row.subject}-${index}`} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-2 sm:px-2.5 py-2 text-[11px] text-slate-400">{index + 1}</td>
+                          <td className="px-2 sm:px-2.5 py-2 font-medium text-slate-800">{row.subject}</td>
+                          <td className="px-2 sm:px-2.5 py-2 text-right">
+                            {row.isAbsent ? (
+                              <span className="inline-flex rounded-md bg-rose-50 px-2 py-0.5 text-[11px] font-semibold text-rose-700">Absent</span>
+                            ) : row.pending ? (
+                              <span className="inline-flex rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">Pending</span>
+                            ) : (
+                              <span className="inline-flex rounded-md bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/10">
+                                {formatPercent(row.percentage)}
+                              </span>
+                            )}
+                          </td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {term.subjects.map((row, index) => (
-                          <tr key={`${row.subject}-${index}`}>
-                            <td className="border-b border-slate-100 px-3 py-3 text-slate-500">{index + 1}</td>
-                            <td className="border-b border-slate-100 px-3 py-3 font-medium text-slate-900">{row.subject}</td>
-                            <td className="border-b border-slate-100 px-3 py-3 text-slate-600">{row.maxMarks}</td>
-                            <td className="border-b border-slate-100 px-3 py-3 text-slate-900">{row.isAbsent ? "Absent" : row.pending ? "—" : row.marks}</td>
-                            <td className="border-b border-slate-100 px-3 py-3 font-semibold text-blue-700">{row.isAbsent ? "—" : row.pending ? "Pending" : formatPercent(row.percentage)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="flex flex-1 flex-col items-center justify-center px-6 py-14 text-center">
-                    <span className="grid h-14 w-14 place-items-center rounded-full bg-sky-50 text-blue-500">
-                      <FileText className="h-6 w-6" />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {term.average !== null ? (
+                  <footer className="flex items-center justify-between border-t border-slate-100 bg-slate-50/60 px-3.5 sm:px-4 py-2 text-xs font-semibold text-slate-700">
+                    <span className="text-[11px] uppercase tracking-wider text-slate-500 font-medium">{term.label} Average</span>
+                    <span className="text-xs sm:text-sm font-bold text-blue-700 bg-white px-2 py-0.5 rounded-md border border-slate-200/80 shadow-2xs">
+                      {formatPercent(term.average)}
                     </span>
-                    <p className="mt-4 text-sm font-semibold text-slate-800">
-                      {term.examConfigured ? `Results for ${term.label} have not been published yet.` : `${term.label} exam is not available.`}
-                    </p>
-                    <p className="mt-1 max-w-sm text-sm text-slate-500">
-                      {term.examConfigured ? "Results will appear here once the school publishes them." : "The school has not set up this exam for your class."}
-                    </p>
-                  </div>
-                )}
+                  </footer>
+                ) : null}
               </section>
             );
           })}
         </div>
       ) : null}
 
+      {/* 4. Academic Year Summary (Bottom card) */}
       {data?.year && data.terms.length ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2">
-            <span className="grid h-9 w-9 place-items-center rounded-lg bg-blue-600 text-white"><GraduationCap className="h-4 w-4" /></span>
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 text-white shadow-xs">
+              <GraduationCap className="h-4 w-4" />
+            </span>
             <div>
-              <h3 className="font-semibold text-slate-950">Academic Year Summary ({data.year.name})</h3>
-              <p className="text-sm text-slate-500">{data.yearStatus === "final" ? "Final average. Every assigned subject is published." : "Provisional average. Unpublished subjects stay in the maximum marks."}</p>
+              <h3 className="text-sm font-bold text-slate-900">Academic Year Summary ({data.year.name})</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {data.yearStatus === "final" ? "Final average. Every assigned subject is published." : "Provisional average. Unpublished subjects stay in the maximum marks."}
+              </p>
             </div>
           </div>
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <div className="mt-3.5 grid gap-3 sm:grid-cols-2 md:grid-cols-3">
             {data.terms.map((term) => (
               <SummaryMetric key={`summary-${term.term}`} term={term} tone={term.term === "TERM_1" ? "sky" : "amber"} />
             ))}
@@ -817,7 +1079,9 @@ export function StudentResultsPage() {
       ) : null}
 
       {data && !data.student && !loading ? (
-        <p className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center text-sm text-slate-500">No student record is linked to this account.</p>
+        <p className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center text-sm text-slate-500">
+          No student record is linked to this account.
+        </p>
       ) : null}
     </div>
   );

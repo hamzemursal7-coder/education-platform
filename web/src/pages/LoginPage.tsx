@@ -44,7 +44,7 @@ export function LoginPage({ onSuccess: _onSuccess }: { onSuccess: (user: Session
         <h1 className="mt-4 text-center text-4xl font-bold tracking-tight text-[#10284a] sm:text-5xl">
           Choose Your <span className="text-[#2f7cf6]">Portal</span>
         </h1>
-        <p className="mt-2 text-sm text-[#4b6280] sm:text-base">Select one portal to continue</p>
+        <p className="mt-2 text-sm text-[#4b6280] sm:text-base">Select your portal to continue</p>
         <section className="mt-7 w-full max-w-[420px] rounded-[28px] border border-slate-200 bg-white px-6 py-8 text-center shadow-sm sm:px-9">
           <img
             src="/school-logo.svg"
