@@ -373,7 +373,7 @@ export function TeacherProfilePage() {
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", phone: "", qualification: "", dateOfBirth: "", address: "", nationalId: "" });
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", email: "", phone: "", qualification: "", dateOfBirth: "", address: "", nationalId: "" });
   const [pickedSubjects, setPickedSubjects] = useState<string[]>([]);
   const [openClass, setOpenClass] = useState("");
   const [yearView, setYearView] = useState("");
@@ -400,6 +400,7 @@ export function TeacherProfilePage() {
     setEditForm({
       firstName: data.firstName,
       lastName: data.lastName,
+      email: data.email,
       phone: data.phone,
       qualification: data.qualification ?? "",
       dateOfBirth: data.dateOfBirth ? data.dateOfBirth.slice(0, 10) : "",
@@ -663,6 +664,7 @@ export function TeacherProfilePage() {
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-medium text-slate-700">First name<input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" value={editForm.firstName} onChange={(event) => setEditForm({ ...editForm, firstName: event.target.value })} required /></label>
               <label className="text-sm font-medium text-slate-700">Last name<input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" value={editForm.lastName} onChange={(event) => setEditForm({ ...editForm, lastName: event.target.value })} required /></label>
+              <label className="text-sm font-medium text-slate-700 sm:col-span-2">Login email<input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} required /></label>
               <label className="text-sm font-medium text-slate-700">Phone<input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} required /></label>
               <label className="text-sm font-medium text-slate-700">Specialist<input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" value={editForm.qualification} onChange={(event) => setEditForm({ ...editForm, qualification: event.target.value })} /></label>
               <label className="text-sm font-medium text-slate-700">Date of birth<input type="date" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" value={editForm.dateOfBirth} onChange={(event) => setEditForm({ ...editForm, dateOfBirth: event.target.value })} /></label>

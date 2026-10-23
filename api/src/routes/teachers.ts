@@ -3,7 +3,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { levelLabel } from "../lib/levels.js";
 import { prisma } from "../lib/prisma.js";
-import { issueSetPasswordLink } from "../lib/accountLink.js";
+import { issueSetPasswordLink, syncLoginEmail } from "../lib/accountLink.js";
 import { newRefreshToken } from "../lib/tokens.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
@@ -32,6 +32,7 @@ const assignmentSchema = z.object({
 const updateTeacherSchema = z.object({
   firstName: z.string().trim().min(2).max(80),
   lastName: z.string().trim().min(2).max(80),
+  email: z.string().email(),
   phone: z.string().trim().min(5).max(30),
   qualification: z.string().trim().min(2).max(120).nullable(),
   dateOfBirth: z.string().date().nullable().optional(),
@@ -296,7 +297,7 @@ teachersRouter.patch("/teachers/:id", async (req, res, next) => {
     const [, updated] = await prisma.$transaction([
       prisma.user.update({
         where: { id: teacher.userId },
-        data: { firstName: body.data.firstName, lastName: body.data.lastName },
+        data: { firstName: body.data.firstName, lastName: body.data.lastName, email: await syncLoginEmail(teacher.userId, body.data.email) },
       }),
       prisma.teacher.update({
         where: { id: teacher.id },

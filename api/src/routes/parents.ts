@@ -9,7 +9,7 @@ import { assertPhotoSize, detectImage, guardianPhotoPath, storeGuardianPhoto, st
 import { loadExaminations, type PublishedMark } from "../lib/examAverages.js";
 import { levelLabel } from "../lib/levels.js";
 import { prisma } from "../lib/prisma.js";
-import { issueSetPasswordLink } from "../lib/accountLink.js";
+import { issueSetPasswordLink, syncLoginEmail } from "../lib/accountLink.js";
 import { newRefreshToken } from "../lib/tokens.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
@@ -299,11 +299,20 @@ parentsRouter.patch("/parents/:id", requireAuth, requireRole("SCHOOL_ADMIN"), as
     });
     if (!guardian) throw new HttpError(404, "Parent was not found.");
     const { dateOfBirth, email, nationalId, ...rest } = body.data;
+    let savedEmail: string | null | undefined = email;
+    if (email !== undefined) {
+      if (guardian.userId) {
+        if (!email) throw new HttpError(400, "This parent signs in with an email. Enter the new login email.");
+        savedEmail = await syncLoginEmail(guardian.userId, email);
+      } else {
+        savedEmail = email ? email.trim().toLowerCase() : null;
+      }
+    }
     const updated = await prisma.guardian.update({
       where: { id: guardian.id },
       data: {
         ...rest,
-        ...(email !== undefined ? { email: email === "" ? null : email } : {}),
+        ...(email !== undefined ? { email: savedEmail || null } : {}),
         ...(nationalId !== undefined ? { nationalId: nationalId === "" ? null : nationalId } : {}),
         ...(dateOfBirth !== undefined ? { dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null } : {}),
       },
@@ -327,6 +336,13 @@ parentsRouter.post("/guardians/:id/invite", requireAuth, requireRole("SCHOOL_ADM
     });
     if (!guardian) throw new HttpError(404, "Guardian was not found.");
     if (guardian.userId) {
+      const requested = z.string().email().safeParse(req.body?.email);
+      if (requested.success) {
+        const next = await syncLoginEmail(guardian.userId, requested.data);
+        if (guardian.email?.toLowerCase() !== next) {
+          await prisma.guardian.update({ where: { id: guardian.id }, data: { email: next } });
+        }
+      }
       const setPasswordPath = await issueSetPasswordLink(guardian.userId);
       res.json({ id: guardian.id, publicId: guardian.publicId, setPasswordPath });
       return;

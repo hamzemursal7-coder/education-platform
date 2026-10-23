@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { issueSetPasswordLink } from "../lib/accountLink.js";
+import { issueSetPasswordLink, syncLoginEmail } from "../lib/accountLink.js";
 import { newRefreshToken } from "../lib/tokens.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
@@ -152,6 +152,7 @@ staffRouter.get("/staff/:id", async (req, res, next) => {
 const staffUpdateSchema = z.object({
   firstName: z.string().trim().min(2).max(80),
   lastName: z.string().trim().min(2).max(80),
+  email: z.string().email(),
   phone: z.string().trim().min(5).max(30),
   designation: z.string().trim().min(2).max(120),
 });
@@ -164,7 +165,7 @@ staffRouter.patch("/staff/:id", async (req, res, next) => {
     const row = await prisma.staffMember.findFirst({ where: { id: String(req.params.id), schoolId: school.id } });
     if (!row) throw new HttpError(404, "Staff member was not found.");
     await prisma.$transaction([
-      prisma.user.update({ where: { id: row.userId }, data: { firstName: body.data.firstName, lastName: body.data.lastName } }),
+      prisma.user.update({ where: { id: row.userId }, data: { firstName: body.data.firstName, lastName: body.data.lastName, email: await syncLoginEmail(row.userId, body.data.email) } }),
       prisma.staffMember.update({ where: { id: row.id }, data: { phone: body.data.phone, designation: body.data.designation } }),
     ]);
     res.json({ ok: true });

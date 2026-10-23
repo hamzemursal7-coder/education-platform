@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { Router } from "express";
 import multer from "multer";
 import { z } from "zod";
-import { issueSetPasswordLink } from "../lib/accountLink.js";
+import { issueSetPasswordLink, syncLoginEmail } from "../lib/accountLink.js";
 import { writeAudit } from "../lib/audit.js";
 import { absoluteStoragePath } from "../lib/files.js";
 import { loadExaminations, type PublishedMark } from "../lib/examAverages.js";
@@ -585,7 +585,7 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
     ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
     const portalUser = await prisma.user.findFirst({
       where: { role: "STUDENT", personKey: student.permanentId },
-      select: { id: true, status: true, passwordHash: true },
+      select: { id: true, email: true, status: true, passwordHash: true },
     });
 
     res.json({
@@ -608,6 +608,7 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
       school: { id: school.id, name: school.name },
       portalStatus: portalUser?.status ?? "NONE",
       hasLogin: Boolean(portalUser?.passwordHash),
+      email: portalUser?.email ?? null,
       photoUrl: studentPhotoPath(student.id, student.photoUrl, student.photoStorageKey),
       guardians: student.guardians.map((link) => ({
         relationship: link.relationship,
@@ -925,6 +926,7 @@ const studentUpdateSchema = z.object({
   leavingYear: z.string().trim().max(20).optional().or(z.literal("")),
   transferCertificateNo: z.string().trim().max(40).optional().or(z.literal("")),
   previousSchoolId: z.string().trim().optional().or(z.literal("")),
+  email: z.string().trim().email().optional().or(z.literal("")),
 });
 
 studentsRouter.patch("/students/:id", async (req, res, next) => {
@@ -970,6 +972,16 @@ studentsRouter.patch("/students/:id", async (req, res, next) => {
         previousSchoolId,
       },
     });
+    const portal = await prisma.user.findFirst({
+      where: { role: "STUDENT", personKey: student.permanentId },
+      select: { id: true },
+    });
+    if (body.data.email) {
+      if (!portal) throw new HttpError(400, "Invite the student before setting a login email.");
+      await syncLoginEmail(portal.id, body.data.email);
+    } else if (portal && body.data.email === "") {
+      throw new HttpError(400, "This student signs in with an email. Enter the new login email.");
+    }
     res.json({ id: updated.id, permanentId: updated.permanentId });
   } catch (error) {
     next(error);
@@ -991,6 +1003,8 @@ studentsRouter.post("/students/:id/access", async (req, res, next) => {
       where: { role: "STUDENT", personKey: student.permanentId },
     });
     if (existing) {
+      const requested = z.string().email().safeParse(req.body?.email);
+      if (requested.success) await syncLoginEmail(existing.id, requested.data);
       const setPasswordPath = await issueSetPasswordLink(existing.id);
       res.json({ kind: existing.passwordHash ? "reset" : "invite", setPasswordPath });
       return;

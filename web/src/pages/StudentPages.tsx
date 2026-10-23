@@ -892,6 +892,7 @@ type Profile = {
   school?: { id: string; name: string };
   portalStatus: string;
   hasLogin: boolean;
+  email: string | null;
   photoUrl: string | null;
   guardians: Array<{
     relationship: string;
@@ -1014,6 +1015,7 @@ export function StudentProfilePage() {
     leavingYear: "",
     transferCertificateNo: "",
     previousSchoolId: "",
+    email: "",
   });
   const [guardianQuery, setGuardianQuery] = useState("");
   const [guardianHits, setGuardianHits] = useState<Array<{ id: string; publicId: string; firstName: string; lastName: string; phone: string; email: string | null; portalStatus?: string; photoUrl?: string | null }>>([]);
@@ -1040,6 +1042,7 @@ export function StudentProfilePage() {
       leavingYear: data.leavingYear ?? "",
       transferCertificateNo: data.transferCertificateNo ?? "",
       previousSchoolId: data.previousSchool?.id ?? "",
+      email: data.email ?? "",
     });
   }
 
@@ -1145,6 +1148,7 @@ export function StudentProfilePage() {
             <MetaChip icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.status} />
             {current ? <MetaChip icon={<BookOpen className="h-3.5 w-3.5" />} label={`${current.level} · ${current.section.name}`} /> : null}
             {current ? <MetaChip icon={<Hash className="h-3.5 w-3.5" />} label={`Roll ${current.rollNumber}`} /> : null}
+            {profile.email ? <MetaChip icon={<IdCard className="h-3.5 w-3.5" />} label={profile.email} /> : null}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="inline-flex h-9 items-center rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white" onClick={() => setEditing(true)}>Edit</button>
@@ -1189,6 +1193,7 @@ export function StudentProfilePage() {
                 <label className="text-sm text-slate-600">Father name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.fatherName} onChange={(event) => setEditForm({ ...editForm, fatherName: event.target.value })} required /></label>
                 <label className="text-sm text-slate-600">Grandfather name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.grandfatherName} onChange={(event) => setEditForm({ ...editForm, grandfatherName: event.target.value })} required /></label>
                 <label className="text-sm text-slate-600">Phone<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} placeholder="Phone" /></label>
+                {profile.email ? <label className="text-sm text-slate-600">Login email<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} required /></label> : null}
                 <label className="text-sm text-slate-600">Gender
                   <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.gender} onChange={(event) => setEditForm({ ...editForm, gender: event.target.value })}>
                     <option value="MALE">Male</option>

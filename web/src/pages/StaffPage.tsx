@@ -101,7 +101,7 @@ export function StaffProfilePage() {
   const { staffId } = useParams();
   const [profile, setProfile] = useState<(StaffRow & { firstName: string; lastName: string; school: { name: string }; hasLogin: boolean }) | null>(null);
   const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState({ firstName: "", lastName: "", phone: "", designation: "" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", email: "", phone: "", designation: "" });
   const [message, setMessage] = useState("");
   const [passwordLink, setPasswordLink] = useState("");
   const [error, setError] = useState("");
@@ -109,7 +109,7 @@ export function StaffProfilePage() {
   async function load() {
     const data = await api<NonNullable<typeof profile>>(`/api/v1/staff/${staffId}`);
     setProfile(data);
-    setForm({ firstName: data.firstName, lastName: data.lastName, phone: data.phone, designation: data.designation });
+    setForm({ firstName: data.firstName, lastName: data.lastName, email: data.email, phone: data.phone, designation: data.designation });
   }
 
   useEffect(() => {
@@ -151,6 +151,7 @@ export function StaffProfilePage() {
         }}>
           <input className="rounded-xl border border-slate-200 px-3 py-2" value={form.firstName} onChange={(event) => setForm({ ...form, firstName: event.target.value })} required />
           <input className="rounded-xl border border-slate-200 px-3 py-2" value={form.lastName} onChange={(event) => setForm({ ...form, lastName: event.target.value })} required />
+          <input className="rounded-xl border border-slate-200 px-3 py-2 md:col-span-2" type="email" placeholder="Login email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
           <input className="rounded-xl border border-slate-200 px-3 py-2" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} required />
           <input className="rounded-xl border border-slate-200 px-3 py-2" value={form.designation} onChange={(event) => setForm({ ...form, designation: event.target.value })} required />
           <div className="flex gap-2 md:col-span-2">
