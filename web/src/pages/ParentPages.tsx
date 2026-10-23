@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, BadgeCheck, BarChart3, BookOpen, CalendarDays, ChevronRight, Eye, Filter, IdCard, Mail, Megaphone, Pencil, Phone, Plus, Receipt, School, Search, Send, UserRound, Users, Wallet } from "lucide-react";
+import { ArrowLeft, BadgeCheck, BarChart3, BookOpen, CalendarDays, ChevronRight, Eye, Filter, IdCard, Mail, Megaphone, Pencil, Phone, Plus, Receipt, School, Search, Send, UserRound, Users, Wallet, Check, CheckCircle2, Sparkles, FileText, CalendarCheck2, GraduationCap } from "lucide-react";
 import { api } from "../lib/api";
 import { PasswordLinkDialog, passwordLinkUrl } from "../components/PasswordLinkDialog";
 import { Avatar, DataTable } from "../components/PeopleList";
@@ -476,6 +476,10 @@ type Child = {
   level: string;
   section: string;
   rollNumber?: number | null;
+  attendanceRate?: number | null;
+  totalAttendanceSessions?: number;
+  publishedExamsCount?: number;
+  graduationYear?: string | null;
 };
 
 type AverageStatus = "final" | "provisional" | "unavailable";
@@ -734,72 +738,247 @@ export function ParentDashboard() {
   const [params] = useSearchParams();
   const query = params.get("q")?.trim().toLowerCase() ?? "";
   const [children, setChildren] = useState<Child[]>([]);
-  const [summary, setSummary] = useState<{ outstandingFees: number; announcements: number; absentSessions: number } | null>(null);
+  const [statusTab, setStatusTab] = useState<"ALL" | "ACTIVE" | "ALUMNI">("ALL");
   const [error, setError] = useState("");
 
   useEffect(() => {
-    Promise.all([
-      api<Child[]>("/api/v1/parent/children"),
-      api<{ outstandingFees: number; announcements: number; absentSessions: number }>("/api/v1/dashboard/parent"),
-    ])
-      .then(([childRows, dash]) => {
-        setChildren(childRows);
-        setSummary(dash);
-      })
+    api<Child[]>("/api/v1/parent/children")
+      .then(setChildren)
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load children."));
   }, []);
 
-  const visible = children.filter((child) => !query || `${child.name} ${child.permanentId} ${child.school} ${child.level} ${child.section}`.toLowerCase().includes(query));
+  const activeCount = children.filter((c) => c.status === "ACTIVE").length;
+  const alumniCount = children.filter((c) => c.status === "ALUMNI").length;
+
+  const visible = children.filter((child) => {
+    if (statusTab === "ACTIVE" && child.status !== "ACTIVE") return false;
+    if (statusTab === "ALUMNI" && child.status !== "ALUMNI") return false;
+    if (query && !`${child.name} ${child.permanentId} ${child.school} ${child.level} ${child.section}`.toLowerCase().includes(query)) return false;
+    return true;
+  });
 
   return (
-    <div className="space-y-5">
-      {error ? <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p> : null}
-      {summary ? (
-        <div className="grid gap-3 md:grid-cols-3">
-          <Link to="/parent/fees" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-blue-200">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-600"><Wallet className="h-5 w-5" /></span>
-            <span className="min-w-0 flex-1"><span className="block text-sm text-slate-500">Outstanding fees</span><strong className="text-2xl text-slate-950">{summary.outstandingFees}</strong></span>
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          </Link>
-          <Link to="/parent/announcements" className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-violet-200">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-violet-50 text-violet-600"><Megaphone className="h-5 w-5" /></span>
-            <span className="min-w-0 flex-1"><span className="block text-sm text-slate-500">Announcements</span><strong className="text-2xl text-slate-950">{summary.announcements}</strong></span>
-            <ChevronRight className="h-4 w-4 text-slate-300" />
-          </Link>
-          <article className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-amber-50 text-amber-600"><CalendarDays className="h-5 w-5" /></span>
-            <span className="min-w-0 flex-1"><span className="block text-sm text-slate-500">Absent sessions</span><strong className="text-2xl text-slate-950">{summary.absentSessions}</strong></span>
-          </article>
+    <div className="space-y-6 pb-10">
+      {error ? <p className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-sm text-rose-800">{error}</p> : null}
+
+      {/* Header and Filter Row */}
+      <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-4">
+        <div>
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">Your Children</h2>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Below are the children linked to your parent account.
+          </p>
         </div>
-      ) : null}
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-slate-800"><Users className="h-4 w-4 text-blue-600" /><div><h2 className="text-sm font-semibold">Your children</h2><p className="text-xs text-slate-500">Below are the children linked to your parent account.</p></div></div>
-          <span className="text-xs font-medium text-blue-600">{visible.length} {visible.length === 1 ? "child" : "children"}</span>
-        </div>
-        {!visible.length && !error ? <p className="rounded-2xl border border-dashed border-slate-300 bg-white py-10 text-center text-sm text-slate-500">No linked children.</p> : null}
-        <div className="grid gap-3 xl:grid-cols-2">
-          {visible.map((child) => {
-            const initials = child.name.split(" ").slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase();
-            const role = parentRole(child.relationship);
-            return (
-              <Link key={child.id} to={`/parent/children/${child.id}`} className="flex items-center gap-4 rounded-2xl border border-slate-200 border-l-4 border-l-blue-500 bg-white p-4 shadow-sm hover:border-blue-200">
-                {child.photoUrl ? <img src={child.photoUrl} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover" /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-violet-100 text-sm font-semibold text-violet-700">{initials}</span>}
-                <span className="min-w-0 flex-1">
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-950">{child.name}</span>
-                    {role ? <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${role.className}`}>{role.label}</span> : null}
-                  </span>
-                  <span className="mt-0.5 block text-xs font-semibold text-slate-500">{child.permanentId}</span>
-                  <span className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600"><span className="inline-flex items-center gap-1"><School className="h-3.5 w-3.5" />{child.school}</span><span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{child.year} · {child.level} · Section {child.section}</span></span>
-                  <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{child.status === "ALUMNI" ? "Graduated" : child.status}</span>
-                </span>
-                <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-              </Link>
-            );
-          })}
+
+        {/* Filter Pills Tabs */}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <div className="inline-flex items-center rounded-2xl border border-slate-200 bg-slate-100/80 p-1 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setStatusTab("ALL")}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                statusTab === "ALL"
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              All ({children.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusTab("ACTIVE")}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                statusTab === "ACTIVE"
+                  ? "bg-white text-emerald-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Active ({activeCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusTab("ALUMNI")}
+              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                statusTab === "ALUMNI"
+                  ? "bg-white text-blue-700 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              Alumni ({alumniCount})
+            </button>
+          </div>
+
+          <span className="rounded-2xl border border-blue-100 bg-blue-50/80 px-3 py-1.5 text-xs font-bold text-blue-700 shadow-2xs">
+            {children.length} {children.length === 1 ? "child" : "children"}
+          </span>
         </div>
       </section>
+
+      {/* Children Cards Grid */}
+      {!visible.length && !error ? (
+        <div className="rounded-3xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm text-slate-500 shadow-sm">
+          No children match the selected filter.
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+        {visible.map((child) => {
+          const initials = child.name
+            .split(" ")
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part[0] ?? "")
+            .join("")
+            .toUpperCase();
+          const role = parentRole(child.relationship);
+          const isActive = child.status === "ACTIVE";
+
+          return (
+            <article
+              key={child.id}
+              className="group relative flex flex-col justify-between rounded-3xl border border-slate-200/90 bg-white p-5 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+            >
+              {/* Top Header Pill inside card */}
+              <div className="flex items-center justify-end w-full mb-1">
+                {isActive ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                    <Check className="h-3 w-3 stroke-[3]" />
+                    Active
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                    <BadgeCheck className="h-3.5 w-3.5 text-blue-600" />
+                    Graduated
+                  </span>
+                )}
+              </div>
+
+              {/* Centered Avatar with distinctive Green Tick / Blue Tick */}
+              <div className="flex flex-col items-center text-center">
+                <div className="relative mx-auto my-1">
+                  {child.photoUrl ? (
+                    <img
+                      src={child.photoUrl}
+                      alt={child.name}
+                      className="h-20 w-20 rounded-full object-cover ring-4 ring-slate-100 shadow-sm"
+                    />
+                  ) : (
+                    <div
+                      className={`grid h-20 w-20 place-items-center rounded-full font-black text-xl tracking-wider ring-4 shadow-inner ${
+                        isActive
+                          ? "bg-gradient-to-br from-violet-100 via-purple-50 to-indigo-100 text-purple-700 ring-purple-100/90"
+                          : "bg-gradient-to-br from-sky-100 via-blue-50 to-indigo-100 text-blue-700 ring-blue-100/90"
+                      }`}
+                    >
+                      {initials}
+                    </div>
+                  )}
+
+                  {/* Distinctive Tick Badge at Avatar Bottom-Right */}
+                  {isActive ? (
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-white ring-2 ring-white shadow-xs"
+                      title="Active Enrolled (Green Tick)"
+                    >
+                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                    </span>
+                  ) : (
+                    <span
+                      className="absolute -bottom-0.5 -right-0.5 grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-white ring-2 ring-white shadow-xs"
+                      title="Graduated / Alumni (Blue Tick)"
+                    >
+                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                    </span>
+                  )}
+                </div>
+
+                {/* Student Full Name */}
+                <h3 className="mt-2.5 text-base font-bold text-slate-900 truncate max-w-full capitalize tracking-tight" title={child.name}>
+                  {child.name}
+                </h3>
+
+                {/* Sub-row: Monospace ID + Relationship Badge */}
+                <div className="mt-1 flex items-center justify-center gap-1.5 text-xs text-slate-500">
+                  <span className="font-mono text-[11px] font-semibold text-slate-400">
+                    {child.permanentId}
+                  </span>
+                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                    {role?.label ?? child.relationship ?? "Child"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Middle Placement Box (School, Class & Year) */}
+              <div className="my-3.5 rounded-2xl bg-slate-50/90 border border-slate-100 p-3 text-center space-y-1">
+                <div className="flex items-center justify-center gap-1 text-xs font-bold text-slate-700">
+                  <span className={`h-2 w-2 rounded-full shrink-0 ${isActive ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+                  <School className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                  <span className="truncate">{child.school || "School"}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium truncate">
+                  {child.level ? `${child.level} · Sec ${child.section}` : "Enrolled"} {child.year ? `(${child.year})` : ""}
+                </p>
+              </div>
+
+              {/* Real Data Metric Tags Row */}
+              <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs">
+                {isActive ? (
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                      <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                      {child.attendanceRate !== null && child.attendanceRate !== undefined
+                        ? `${child.attendanceRate}% Attend`
+                        : "Attendance Active"}
+                    </span>
+                    {child.publishedExamsCount && child.publishedExamsCount > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                        <GraduationCap className="h-3 w-3 text-blue-600" /> {child.publishedExamsCount} Results
+                      </span>
+                    ) : child.rollNumber != null ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                        Roll #{child.rollNumber}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                        Enrolled
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-[11px] font-bold text-purple-700 ring-1 ring-inset ring-purple-600/20">
+                      <Sparkles className="h-3 w-3 text-purple-600" /> Class {child.graduationYear || (child.year ? child.year.slice(0, 4) : "2024")}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                      <BadgeCheck className="h-3 w-3 text-blue-600" /> Certified
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
+                      <FileText className="h-3 w-3 text-slate-400" /> Transcript
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Bottom Action Button */}
+              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2">
+                <Link
+                  to={`/parent/children/${child.id}`}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white py-2 text-xs sm:text-sm font-bold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                >
+                  View Student Portal <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                </Link>
+                <Link
+                  to={`/parent/attendance?child=${child.id}`}
+                  title="View Child Attendance"
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 shadow-2xs transition-colors"
+                >
+                  <CalendarCheck2 className="h-4 w-4" />
+                </Link>
+              </div>
+            </article>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -506,6 +506,8 @@ parentsRouter.get("/parent/children", requireAuth, requireRole("PARENT"), async 
                     academicYear: true,
                     section: true,
                     classGroup: true,
+                    attendance: { select: { status: true } },
+                    results: { where: { state: "PUBLISHED" }, select: { id: true } },
                   },
                 },
               },
@@ -518,10 +520,16 @@ parentsRouter.get("/parent/children", requireAuth, requireRole("PARENT"), async 
     res.json(
       guardian.students.map((link) => {
         const current = link.student.enrollments.find((item) => item.status === "ACTIVE") ?? link.student.enrollments[0];
+        const totalAttendance = current?.attendance.length ?? 0;
+        const presentAttendance = current?.attendance.filter((a) => a.status === "PRESENT" || a.status === "LATE").length ?? 0;
+        const attendanceRate = totalAttendance > 0 ? Math.round((presentAttendance / totalAttendance) * 100) : null;
+        const publishedExamsCount = current?.results.length ?? 0;
+        const graduationYear = link.student.status === "ALUMNI" ? (current?.academicYear.name.slice(0, 4) || "2024") : null;
+
         return {
           id: link.student.id,
           permanentId: link.student.secondaryPermanentId ?? link.student.permanentId,
-          name: `${link.student.firstName} ${link.student.fatherName} ${link.student.grandfatherName}`,
+          name: `${link.student.firstName} ${link.student.fatherName} ${link.student.grandfatherName}`.replace(/\s+/g, " ").trim(),
           photoUrl: link.student.photoUrl,
           dateOfBirth: link.student.dateOfBirth,
           relationship: link.relationship,
@@ -531,6 +539,10 @@ parentsRouter.get("/parent/children", requireAuth, requireRole("PARENT"), async 
           level: current ? levelLabel(current.classGroup.level) : "",
           section: current?.section.name ?? "",
           rollNumber: current?.rollNumber ?? null,
+          attendanceRate,
+          totalAttendanceSessions: totalAttendance,
+          publishedExamsCount,
+          graduationYear,
         };
       }),
     );
