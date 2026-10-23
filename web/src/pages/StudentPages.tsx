@@ -12,6 +12,7 @@ import {
   Eye,
   GraduationCap,
   Hash,
+  Mail,
   IdCard,
   Info,
   Pencil,
@@ -556,6 +557,7 @@ export function NewStudentPage() {
     gender: "",
     dateOfBirth: "",
     phone: "",
+    email: "",
     nationalId: "",
   });
   const [parentMode, setParentMode] = useState<"skip" | "search" | "new">("search");
@@ -706,7 +708,10 @@ export function NewStudentPage() {
           <label className="text-sm font-medium text-slate-700">NIRA (optional)
             <input className={inputClass} placeholder="Enter NIRA number" value={form.nationalId} onChange={(event) => setField("nationalId", event.target.value)} />
           </label>
-          <label className="text-sm font-medium text-slate-700 md:col-span-2">Phone Number (optional)
+          <label className="text-sm font-medium text-slate-700">Email (optional)
+            <input className={inputClass} type="email" placeholder="Used as the login email" value={form.email} onChange={(event) => setField("email", event.target.value)} />
+          </label>
+          <label className="text-sm font-medium text-slate-700">Phone Number (optional)
             <span className="mt-1.5 flex overflow-hidden rounded-xl border border-slate-200 focus-within:border-blue-400">
               <span className="inline-flex items-center border-r border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">+252</span>
               <input className="w-full bg-white px-3 py-2.5 text-sm text-slate-800 outline-none" placeholder="Enter phone number" value={form.phone} onChange={(event) => setField("phone", event.target.value)} />
@@ -991,6 +996,10 @@ export function StudentProfilePage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [passwordLink, setPasswordLink] = useState<{ url: string; email?: string } | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const [placementSection, setPlacementSection] = useState("");
   const [moveClass, setMoveClass] = useState("");
@@ -1121,6 +1130,28 @@ export function StudentProfilePage() {
     }
   }
 
+  async function issueStudentLink(email?: string) {
+    if (!studentId) return;
+    setInviteBusy(true);
+    setInviteError("");
+    setError("");
+    try {
+      const result = await api<{ setPasswordPath: string }>(`/api/v1/students/${studentId}/access`, {
+        method: "POST",
+        body: JSON.stringify({ email: email || undefined }),
+      });
+      setInviteOpen(false);
+      setPasswordLink({ url: passwordLinkUrl(result.setPasswordPath), email: email || profile?.email || undefined });
+      await loadProfile();
+    } catch (caught) {
+      const text = caught instanceof Error ? caught.message : "Could not create the password link.";
+      setInviteError(text);
+      setError(text);
+    } finally {
+      setInviteBusy(false);
+    }
+  }
+
   if (error && !profile) return <p className="text-red-600">{error}</p>;
   if (!profile) return <p className="text-slate-500">Loading student...</p>;
   const current = profile.enrollments.find((item) => item.status === "ACTIVE") ?? profile.enrollments[0];
@@ -1148,16 +1179,19 @@ export function StudentProfilePage() {
             <MetaChip icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.status} />
             {current ? <MetaChip icon={<BookOpen className="h-3.5 w-3.5" />} label={`${current.level} · ${current.section.name}`} /> : null}
             {current ? <MetaChip icon={<Hash className="h-3.5 w-3.5" />} label={`Roll ${current.rollNumber}`} /> : null}
-            {profile.email ? <MetaChip icon={<IdCard className="h-3.5 w-3.5" />} label={profile.email} /> : null}
+            {profile.email ? <MetaChip icon={<Mail className="h-3.5 w-3.5" />} label={profile.email} /> : null}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="inline-flex h-9 items-center rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white" onClick={() => setEditing(true)}>Edit</button>
             <button type="button" className="inline-flex h-9 items-center rounded-xl border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700" onClick={() => {
-              const email = profile.hasLogin ? undefined : window.prompt("Student email for portal invite:") || undefined;
-              if (!profile.hasLogin && profile.portalStatus === "NONE" && !email) return;
-              api<{ setPasswordPath: string }>(`/api/v1/students/${studentId}/access`, { method: "POST", body: JSON.stringify({ email }) })
-                .then((result) => setPasswordLink({ url: passwordLinkUrl(result.setPasswordPath), email }))
-                .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update login access."));
+              setError("");
+              if (profile.email || profile.portalStatus !== "NONE") {
+                void issueStudentLink(profile.email ?? undefined);
+                return;
+              }
+              setInviteEmail("");
+              setInviteError("");
+              setInviteOpen(true);
             }}>{profile.hasLogin ? "Reset password" : "Invite login"}</button>
           <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500">
             <Upload className={iconSm} />
@@ -1193,7 +1227,7 @@ export function StudentProfilePage() {
                 <label className="text-sm text-slate-600">Father name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.fatherName} onChange={(event) => setEditForm({ ...editForm, fatherName: event.target.value })} required /></label>
                 <label className="text-sm text-slate-600">Grandfather name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.grandfatherName} onChange={(event) => setEditForm({ ...editForm, grandfatherName: event.target.value })} required /></label>
                 <label className="text-sm text-slate-600">Phone<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} placeholder="Phone" /></label>
-                {profile.email ? <label className="text-sm text-slate-600">Login email<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} required /></label> : null}
+                <label className="text-sm text-slate-600">Email (optional)<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} placeholder="Used as the login email" /></label>
                 <label className="text-sm text-slate-600">Gender
                   <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.gender} onChange={(event) => setEditForm({ ...editForm, gender: event.target.value })}>
                     <option value="MALE">Male</option>
@@ -1236,6 +1270,7 @@ export function StudentProfilePage() {
               <ProfileField label="Gender" value={profile.gender} />
               <ProfileField label="Date of birth" value={profile.dateOfBirth.slice(0, 10)} />
               <ProfileField label="Phone" value={profile.phone || "—"} />
+              <ProfileField label="Email" value={profile.email || "No email yet"} />
               <ProfileField label="NIRA" value={profile.nationalId || "—"} />
               <ProfileField label="Parent" value={profile.guardians.length ? profile.guardians.map((link) => `${link.guardian.firstName} ${link.guardian.lastName}`).join(", ") : "Not linked"} />
               {profile.previousSchool ? <ProfileField label="Previous school" value={profile.previousSchool.name} tone="blue" /> : null}
@@ -1561,6 +1596,36 @@ export function StudentProfilePage() {
       ) : null}
       {message ? <p className="text-blue-600">{message}</p> : null}
       {error ? <p className="text-red-600">{error}</p> : null}
+      {inviteOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4" onClick={() => { if (!inviteBusy) setInviteOpen(false); }}>
+          <form className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); void issueStudentLink(inviteEmail.trim()); }}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Student portal</p>
+                  <h3 className="mt-0.5 text-xl font-bold text-slate-950">This student has no email</h3>
+                </div>
+              </div>
+              <button type="button" className="rounded-full p-1 text-slate-400 hover:bg-slate-100" onClick={() => setInviteOpen(false)} aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-600">Email is optional. Add one so this student can sign in. The address you enter becomes the login email, and a one-time password link appears next.</p>
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Email
+              <input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-blue-500" type="email" required placeholder="student@example.com" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} />
+            </label>
+            {inviteError ? <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{inviteError}</p> : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700" onClick={() => setInviteOpen(false)} disabled={inviteBusy}>Cancel</button>
+              <button className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" disabled={inviteBusy}>{inviteBusy ? "Saving..." : "Save email and create link"}</button>
+            </div>
+          </form>
+        </div>
+      ) : null}
       {passwordLink ? <PasswordLinkDialog url={passwordLink.url} email={passwordLink.email} onClose={() => setPasswordLink(null)} /> : null}
 
       <div className="flex flex-wrap gap-2">

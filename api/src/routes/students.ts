@@ -52,11 +52,42 @@ const studentSchema = z.object({
   leavingYear: z.string().trim().max(20).optional().or(z.literal("")),
   transferCertificateNo: z.string().trim().max(40).optional().or(z.literal("")),
   notes: z.string().trim().max(500).optional().or(z.literal("")),
+  email: z.string().trim().email().optional().or(z.literal("")),
 });
 
 const relationshipSchema = z.object({
   relationship: z.enum(["FATHER", "MOTHER", "GUARDIAN"]),
 });
+
+async function ensureStudentLoginEmail(
+  student: { permanentId: string; firstName: string; fatherName: string },
+  schoolId: string,
+  email: string,
+) {
+  const existing = await prisma.user.findFirst({
+    where: { role: "STUDENT", personKey: student.permanentId },
+    select: { id: true },
+  });
+  if (existing) {
+    await syncLoginEmail(existing.id, email);
+    return;
+  }
+  const next = email.trim().toLowerCase();
+  const taken = await prisma.user.findUnique({ where: { email: next }, select: { id: true } });
+  if (taken) throw new HttpError(409, "This email is already used by another account.");
+  await prisma.user.create({
+    data: {
+      email: next,
+      role: "STUDENT",
+      status: "INVITED",
+      firstName: student.firstName,
+      lastName: student.fatherName,
+      schoolId,
+      personKey: student.permanentId,
+      isDemo: false,
+    },
+  });
+}
 
 async function schoolOfAdmin(userId: string) {
   const user = await prisma.user.findUnique({ where: { id: userId }, include: { school: true } });
@@ -972,15 +1003,14 @@ studentsRouter.patch("/students/:id", async (req, res, next) => {
         previousSchoolId,
       },
     });
-    const portal = await prisma.user.findFirst({
-      where: { role: "STUDENT", personKey: student.permanentId },
-      select: { id: true },
-    });
     if (body.data.email) {
-      if (!portal) throw new HttpError(400, "Invite the student before setting a login email.");
-      await syncLoginEmail(portal.id, body.data.email);
-    } else if (portal && body.data.email === "") {
-      throw new HttpError(400, "This student signs in with an email. Enter the new login email.");
+      await ensureStudentLoginEmail(updated, school.id, body.data.email);
+    } else if (body.data.email === "") {
+      const portal = await prisma.user.findFirst({
+        where: { role: "STUDENT", personKey: student.permanentId },
+        select: { id: true },
+      });
+      if (portal) throw new HttpError(400, "This student signs in with an email. Enter the login email, or leave the current one.");
     }
     res.json({ id: updated.id, permanentId: updated.permanentId });
   } catch (error) {
@@ -1114,6 +1144,7 @@ studentsRouter.post("/students", async (req, res, next) => {
       }
       return student;
     });
+    if (body.data.email) await ensureStudentLoginEmail(created, school.id, body.data.email);
     res.status(201).json({ id: created.id, permanentId: created.permanentId });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
