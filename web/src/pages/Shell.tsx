@@ -25,6 +25,7 @@ import {
   Settings,
   School,
   Shield,
+  Sparkles,
   Trash2,
   User,
   UserPlus,
@@ -32,6 +33,8 @@ import {
   UsersRound,
   Wallet,
   X,
+  ExternalLink,
+  AlertCircle,
 } from "lucide-react";
 import { api, type SessionUser } from "../lib/api";
 import { PasswordLinkDialog } from "../components/PasswordLinkDialog";
@@ -640,10 +643,37 @@ export function SuperAdminHome() {
   const primarySchools = summary.schoolList.filter((school) => school.type !== "SECONDARY_ONLY");
   const secondarySchools = summary.schoolList.filter((school) => school.type !== "PRIMARY_ONLY");
   const activeSchools = summary.schoolList.filter((school) => school.isActive).length;
-  const typeLabel = (type: string) => type === "PRIMARY_ONLY" ? "Primary" : type === "SECONDARY_ONLY" ? "Secondary" : "Primary & Secondary";
-  const typeTone = (type: string) => type === "PRIMARY_ONLY" ? "bg-violet-50 text-violet-700" : type === "SECONDARY_ONLY" ? "bg-fuchsia-50 text-fuchsia-700" : "bg-slate-100 text-slate-700";
   const organizationLabel = "Educationnetwork";
   const deleteNameMatches = deleteSchool ? deletePhrase.trim() === deleteSchool.name : false;
+
+  const getSchoolTheme = (type: string) => {
+    switch (type) {
+      case "PRIMARY_ONLY":
+        return {
+          label: "Primary School",
+          badge: "bg-purple-50 text-purple-700 border-purple-200/80",
+          topBar: "from-purple-500 via-indigo-500 to-purple-600",
+          iconBg: "bg-purple-100/90 text-purple-700",
+          hoverBorder: "hover:border-purple-300",
+        };
+      case "SECONDARY_ONLY":
+        return {
+          label: "Secondary School",
+          badge: "bg-emerald-50 text-emerald-700 border-emerald-200/80",
+          topBar: "from-emerald-500 via-teal-500 to-emerald-600",
+          iconBg: "bg-emerald-100/90 text-emerald-700",
+          hoverBorder: "hover:border-emerald-300",
+        };
+      default:
+        return {
+          label: "Primary & Secondary",
+          badge: "bg-blue-50 text-blue-700 border-blue-200/80",
+          topBar: "from-blue-600 via-indigo-600 to-cyan-500",
+          iconBg: "bg-blue-100/90 text-blue-700",
+          hoverBorder: "hover:border-blue-300",
+        };
+    }
+  };
 
   async function deactivateBeforeDelete() {
     if (!deleteSchool) return;
@@ -660,118 +690,428 @@ export function SuperAdminHome() {
   }
 
   return (
-    <div className="space-y-5">
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-6 p-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-violet-600">Organization overview</p>
-            <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">Super Admin Command Center</h2>
-            <p className="mt-2 max-w-xl text-sm text-slate-500">Manage and monitor all schools from one place.</p>
-            <div className="mt-4 flex flex-wrap gap-4 text-xs font-medium text-slate-500">
-              <span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 text-violet-500" /> Multi-school management</span>
-              <span className="inline-flex items-center gap-1.5"><LayoutDashboard className="h-3.5 w-3.5 text-violet-500" /> Centralized control</span>
-              <span className="inline-flex items-center gap-1.5"><Shield className="h-3.5 w-3.5 text-violet-500" /> Security & governance</span>
+    <div className="space-y-6">
+      {/* Executive Command Center Banner */}
+      <section className="relative overflow-hidden rounded-3xl border border-indigo-900/40 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-72 w-72 rounded-full bg-indigo-500/15 blur-3xl" />
+        <div className="pointer-events-none absolute right-1/4 -bottom-20 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" />
+
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="min-w-0 max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-400/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-300 backdrop-blur-sm">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400"></span>
+              </span>
+              <span>Super Admin Command Center · Centralized Control</span>
+            </div>
+            <h2 className="mt-3 text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white">
+              Education Management Platform
+            </h2>
+            <p className="mt-2 text-sm sm:text-base text-slate-300 leading-relaxed">
+              Kormeerka guud iyo maamulka dhammaan dugsiyada ururka, ardayda, macallimiinta, iyo xogta maaliyadeed hal meel.
+            </p>
+
+            <div className="mt-4 flex flex-wrap gap-2.5 sm:gap-3 text-xs font-medium text-slate-300">
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 backdrop-blur-xs border border-white/10">
+                <Building2 className="h-3.5 w-3.5 text-indigo-400" />
+                <span>{summary.schools} Dugsiyo Guud ({activeSchools} Firfircoon)</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 backdrop-blur-xs border border-white/10">
+                <GraduationCap className="h-3.5 w-3.5 text-emerald-400" />
+                <span>{summary.students.toLocaleString()} Arday Guud</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 backdrop-blur-xs border border-white/10">
+                <UsersRound className="h-3.5 w-3.5 text-blue-400" />
+                <span>{(summary.teachers + summary.staff).toLocaleString()} Macallimiin & Shaqaale</span>
+              </span>
             </div>
           </div>
-          <div className="flex items-center gap-4 rounded-2xl border border-violet-100 bg-violet-50/60 p-4">
-            <span className="grid h-16 w-16 place-items-center rounded-2xl bg-white text-violet-600 shadow-sm"><School className="h-8 w-8" /></span>
-            <div>
-              <p className="text-sm font-semibold text-slate-900">All schools</p>
-              <p className="text-xs text-slate-500">Complete overview of your organization.</p>
-              <a href="#schools-overview" className="mt-2 inline-flex items-center gap-1 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white">View schools <ChevronRight className="h-3.5 w-3.5" /></a>
-            </div>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-blue-500/30 transition-all cursor-pointer"
+              onClick={() => setCreateSchoolOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              <span>Dugsiga Cusub Ku Dar</span>
+            </button>
+            <a
+              href="#schools-overview"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/15 px-4 py-2.5 text-sm font-semibold text-white backdrop-blur-xs transition-all"
+            >
+              <span>Eeg Dugsiyada</span>
+              <ChevronRight className="h-4 w-4" />
+            </a>
           </div>
         </div>
       </section>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total schools</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.schools}</p><p className="mt-1 text-xs text-slate-500">{activeSchools} active</p></article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total students</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.students}</p><p className="mt-1 text-xs text-slate-500">{summary.maleStudents} male · {summary.femaleStudents} female</p></article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total teachers</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.teachers}</p><p className="mt-1 text-xs text-slate-500">{summary.activeEnrollments} active enrollments</p></article>
-        <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Total staff</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.staff}</p><p className="mt-1 text-xs text-slate-500">{summary.pendingTransfers} pending transfers</p></article>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700">Graduated students</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.graduates}</p><p className="mt-1 text-xs text-emerald-800">Alumni across all schools</p></article>
-        <article className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-amber-700">Parents</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.parents}</p><p className="mt-1 text-xs text-amber-800">Guardians on record</p></article>
-        <article className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">Fees collected</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.feesCollected.toLocaleString()}</p><p className="mt-1 text-xs text-blue-800">Payments received</p></article>
-        <article className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4 shadow-sm"><p className="text-[11px] font-bold uppercase tracking-wide text-rose-700">Fees outstanding</p><p className="mt-2 text-3xl font-bold text-slate-950">{summary.feesOutstanding.toLocaleString()}</p><p className="mt-1 text-xs text-rose-800">Still unpaid</p></article>
-      </div>
-      <p className="text-xs text-slate-500">Primary schools {primarySchools.length} · Secondary schools {secondarySchools.length} · Parents / guardians {summary.parents}</p>
-
-      <section id="schools-overview" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-bold text-slate-950">Schools overview</h3>
-            <p className="text-sm text-slate-500">All schools in your organization.</p>
+      {/* Primary KPI Metric Cards */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Total Schools */}
+        <article className="group relative overflow-hidden rounded-2xl border border-indigo-100/90 bg-white p-5 shadow-[0_4px_20px_rgba(79,70,229,0.06)] hover:shadow-[0_12px_28px_rgba(79,70,229,0.12)] transition-all duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700">Total Schools</span>
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600 group-hover:scale-105 transition-transform">
+              <School className="h-5 w-5" />
+            </div>
           </div>
-          <button type="button" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => setCreateSchoolOpen(true)}><Plus className="h-4 w-4" /> New school</button>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950">{summary.schools}</p>
+          <div className="mt-2 flex items-center justify-between text-xs">
+            <span className="font-semibold text-emerald-600">{activeSchools} Active</span>
+            <span className="text-slate-500">{summary.schools - activeSchools} Inactive</span>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <span>Primary: {primarySchools.length}</span>
+            <span>Secondary: {secondarySchools.length}</span>
+          </div>
+        </article>
+
+        {/* Total Students */}
+        <article className="group relative overflow-hidden rounded-2xl border border-emerald-100/90 bg-white p-5 shadow-[0_4px_20px_rgba(16,185,129,0.06)] hover:shadow-[0_12px_28px_rgba(16,185,129,0.12)] transition-all duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Total Students</span>
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600 group-hover:scale-105 transition-transform">
+              <GraduationCap className="h-5 w-5" />
+            </div>
+          </div>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950">{summary.students.toLocaleString()}</p>
+          <div className="mt-2 flex items-center justify-between text-xs">
+            <span className="text-slate-600">👦 {summary.maleStudents} Wiil</span>
+            <span className="text-slate-600">👧 {summary.femaleStudents} Gabar</span>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <span>Active Enrollments</span>
+            <span className="font-semibold text-emerald-700">{summary.activeEnrollments}</span>
+          </div>
+        </article>
+
+        {/* Teachers & Staff */}
+        <article className="group relative overflow-hidden rounded-2xl border border-purple-100/90 bg-white p-5 shadow-[0_4px_20px_rgba(147,51,234,0.06)] hover:shadow-[0_12px_28px_rgba(147,51,234,0.12)] transition-all duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700">Faculty & Staff</span>
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-purple-50 text-purple-600 group-hover:scale-105 transition-transform">
+              <UsersRound className="h-5 w-5" />
+            </div>
+          </div>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950">{(summary.teachers + summary.staff).toLocaleString()}</p>
+          <div className="mt-2 flex items-center justify-between text-xs">
+            <span className="text-slate-600">{summary.teachers} Teachers</span>
+            <span className="text-slate-600">{summary.staff} Staff</span>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <span>Pending Transfers</span>
+            <span className="font-semibold text-purple-700">{summary.pendingTransfers}</span>
+          </div>
+        </article>
+
+        {/* Financial Revenue */}
+        <article className="group relative overflow-hidden rounded-2xl border border-blue-100/90 bg-white p-5 shadow-[0_4px_20px_rgba(37,99,235,0.06)] hover:shadow-[0_12px_28px_rgba(37,99,235,0.12)] transition-all duration-200">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Fees & Finance</span>
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-600 group-hover:scale-105 transition-transform">
+              <Wallet className="h-5 w-5" />
+            </div>
+          </div>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950">${summary.feesCollected.toLocaleString()}</p>
+          <div className="mt-2 flex items-center justify-between text-xs">
+            <span className="font-semibold text-emerald-600">Collected</span>
+            <span className="font-semibold text-rose-600">Unpaid: ${summary.feesOutstanding.toLocaleString()}</span>
+          </div>
+          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <span>Guardians / Parents</span>
+            <span className="font-semibold text-blue-700">{summary.parents}</span>
+          </div>
+        </article>
+      </div>
+
+      {/* Secondary Quick Metric Strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs flex items-center gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
+            <GraduationCap className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-500 font-medium">Alumni / Graduates</p>
+            <p className="text-base font-bold text-slate-900">{summary.graduates}</p>
+          </div>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_180px_220px]">
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 sm:col-span-2 xl:col-span-1">
-            <Search className="h-4 w-4 text-slate-400" />
-            <input className="w-full bg-transparent py-2.5 text-sm outline-none" placeholder="Search schools by name..." value={schoolSearch} onChange={(event) => setSchoolSearch(event.target.value)} />
+
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs flex items-center gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-amber-50 text-amber-600">
+            <Users className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-500 font-medium">Parents & Guardians</p>
+            <p className="text-base font-bold text-slate-900">{summary.parents}</p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs flex items-center gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-indigo-50 text-indigo-600">
+            <User className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-500 font-medium">Total System Users</p>
+            <p className="text-base font-bold text-slate-900">{summary.users}</p>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs flex items-center gap-3">
+          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-purple-50 text-purple-600">
+            <ArrowLeftRight className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] text-slate-500 font-medium">Pending Transfers</p>
+            <p className="text-base font-bold text-slate-900">{summary.pendingTransfers}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Schools Directory Section */}
+      <section id="schools-overview" className="rounded-3xl border border-slate-200/90 bg-white p-5 sm:p-6 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold text-slate-950">Schools Directory</h3>
+              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-700">
+                {visibleSchools.length} {visibleSchools.length === 1 ? "School" : "Schools"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">Manage institutions, campus admins, student enrollments, and status.</p>
+          </div>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 px-4 py-2 text-xs sm:text-sm font-semibold text-white shadow-sm shadow-blue-500/20 transition-all cursor-pointer"
+            onClick={() => setCreateSchoolOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            <span>New School</span>
+          </button>
+        </div>
+
+        {/* Search & Filter Toolbar */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_200px_180px]">
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-1 focus-within:border-blue-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+            <Search className="h-4 w-4 text-slate-400 shrink-0" />
+            <input
+              className="w-full bg-transparent py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none"
+              placeholder="Search schools by name or location..."
+              value={schoolSearch}
+              onChange={(event) => setSchoolSearch(event.target.value)}
+            />
+            {schoolSearch ? (
+              <button
+                type="button"
+                onClick={() => setSchoolSearch("")}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
           </label>
-          <select className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            <option value="ALL">All types</option>
-            <option value="PRIMARY_ONLY">Primary</option>
-            <option value="SECONDARY_ONLY">Secondary</option>
+          <select
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 font-medium outline-none focus:border-blue-500"
+            value={typeFilter}
+            onChange={(event) => setTypeFilter(event.target.value)}
+          >
+            <option value="ALL">All School Types</option>
+            <option value="PRIMARY_ONLY">Primary Only</option>
+            <option value="SECONDARY_ONLY">Secondary Only</option>
             <option value="PRIMARY_AND_SECONDARY">Primary & Secondary</option>
-            <option value="PRIMARY_SUPPORTED">All primary schools</option>
-            <option value="SECONDARY_SUPPORTED">All secondary schools</option>
+            <option value="PRIMARY_SUPPORTED">All Primary Supported</option>
+            <option value="SECONDARY_SUPPORTED">All Secondary Supported</option>
           </select>
-          <select className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="ALL">All statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="INACTIVE">Inactive</option>
+          <select
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs sm:text-sm text-slate-700 font-medium outline-none focus:border-blue-500"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            <option value="ALL">All Statuses</option>
+            <option value="ACTIVE">Active Only</option>
+            <option value="INACTIVE">Inactive Only</option>
           </select>
         </div>
-        <div className="mt-5 grid gap-4 md:grid-cols-2">
+
+        {/* Compact, Colorful, Elevated School Cards Grid */}
+        <div className="mt-5 grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
           {visibleSchools.map((school) => {
             const adminName = school.admin ? `${school.admin.firstName} ${school.admin.lastName}`.trim() : "";
+            const theme = getSchoolTheme(school.type);
             return (
-              <article key={school.id} className="flex flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_16px_40px_-32px_rgba(15,23,42,0.55)]">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h4 className="truncate text-lg font-semibold tracking-tight text-slate-950">{school.name}</h4>
-                    <p className="mt-1 text-sm text-slate-500">{school.address || "No address yet"}</p>
+              <article
+                key={school.id}
+                className={`group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.06)] hover:shadow-[0_16px_36px_rgba(15,23,42,0.12)] transition-all duration-200 hover:-translate-y-1 ${theme.hoverBorder}`}
+              >
+                {/* Top colorful gradient accent bar */}
+                <div className={`h-1.5 w-full bg-gradient-to-r ${theme.topBar}`} />
+
+                <div className="flex flex-1 flex-col p-4 sm:p-4.5">
+                  {/* Top row: Icon + School Name + Status badge */}
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl font-bold shadow-xs ${theme.iconBg}`}>
+                        <School className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="truncate font-bold text-sm sm:text-[15px] text-slate-900 leading-snug group-hover:text-blue-600 transition-colors" title={school.name}>
+                          {school.name}
+                        </h4>
+                        <p className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500 truncate" title={school.address || "No address yet"}>
+                          <MapPin className="h-3 w-3 shrink-0 text-slate-400" />
+                          <span className="truncate">{school.address || "No address yet"}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Status pill */}
+                    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-bold border shadow-2xs ${
+                      school.isActive
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/70"
+                        : "bg-slate-100 text-slate-500 border-slate-200"
+                    }`}>
+                      {school.isActive ? (
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                        </span>
+                      ) : (
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      )}
+                      {school.isActive ? "Active" : "Inactive"}
+                    </span>
                   </div>
-                  <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${school.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${school.isActive ? "bg-emerald-500" : "bg-slate-400"}`} />
-                    {school.isActive ? "Active" : "Inactive"}
-                  </span>
-                </div>
-                <div className="mt-3">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${typeTone(school.type)}`}>{typeLabel(school.type)}</span>
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl bg-slate-50 px-2 py-3 text-center">
-                  <div><p className="text-lg font-semibold text-slate-950">{school.activeEnrollments}</p><p className="text-[11px] text-slate-500">Students</p></div>
-                  <div><p className="text-lg font-semibold text-slate-950">{school.teachers}</p><p className="text-[11px] text-slate-500">Teachers</p></div>
-                  <div><p className="text-lg font-semibold text-slate-950">{school.staff}</p><p className="text-[11px] text-slate-500">Staff</p></div>
-                </div>
-                <div className="mt-4 rounded-2xl border border-slate-100 px-3 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">School admin</p>
-                  <p className="mt-1 text-sm font-medium text-slate-900">{adminName || "Not assigned yet"}</p>
-                  <p className="truncate text-sm text-slate-500">{school.admin?.email || "No email"}</p>
-                </div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button type="button" className="inline-flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white" onClick={() => openEdit(school)}><Pencil className="h-3.5 w-3.5" /> Edit</button>
-                  {school.isActive ? (
-                    <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" onClick={() => {
-                      setError("");
-                      api(`/api/v1/superadmin/schools/${school.id}/enter`, { method: "POST" })
-                        .then(() => { window.location.assign("/school/dashboard"); })
-                        .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not enter school."));
-                    }}>View</button>
-                  ) : null}
-                  <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" onClick={() => { setAdminForm((current) => ({ ...current, schoolId: school.id, firstName: "", middleName: "", lastName: "", email: "", phone: "" })); setAssignAdminOpen(true); }}>Assign</button>
-                  <button type="button" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50" onClick={() => setConfirmSchool(school)}>{school.isActive ? "Deactivate" : "Activate"}</button>
-                  <button type="button" className="rounded-xl border border-rose-100 px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50" onClick={() => { setDeletePhrase(""); setDeleteSchool(school); }}>Delete</button>
+
+                  {/* Level tag pill */}
+                  <div className="mt-2.5">
+                    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${theme.badge}`}>
+                      {theme.label}
+                    </span>
+                  </div>
+
+                  {/* Compact stats pill (Students, Teachers, Staff) */}
+                  <div className="mt-3 grid grid-cols-3 divide-x divide-slate-100 rounded-xl bg-slate-50/90 border border-slate-100 p-2 text-center">
+                    <div className="px-1">
+                      <p className="text-sm font-bold text-slate-900">{school.activeEnrollments}</p>
+                      <p className="text-[10px] font-medium text-slate-500">Students</p>
+                    </div>
+                    <div className="px-1">
+                      <p className="text-sm font-bold text-slate-900">{school.teachers}</p>
+                      <p className="text-[10px] font-medium text-slate-500">Teachers</p>
+                    </div>
+                    <div className="px-1">
+                      <p className="text-sm font-bold text-slate-900">{school.staff}</p>
+                      <p className="text-[10px] font-medium text-slate-500">Staff</p>
+                    </div>
+                  </div>
+
+                  {/* School Admin snippet */}
+                  <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50/50 p-2.5">
+                    <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      <span>School Admin</span>
+                      {!adminName ? (
+                        <span className="rounded bg-amber-50 px-1 py-0.5 text-[9px] font-semibold text-amber-700 border border-amber-200/50">Unassigned</span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 min-w-0">
+                      <div className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-100 to-violet-100 text-[10px] font-bold text-indigo-700 border border-indigo-200/60">
+                        {adminName ? adminName.charAt(0).toUpperCase() : "?"}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold text-slate-900">
+                          {adminName || "No admin assigned"}
+                        </p>
+                        <p className="truncate text-[10px] text-slate-500">
+                          {school.admin?.email || "Click assign below"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="mt-3.5 space-y-1.5 pt-1">
+                    {school.isActive ? (
+                      <button
+                        type="button"
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700 py-1.5 px-3 text-xs font-bold text-white shadow-sm shadow-blue-500/20 transition-all cursor-pointer"
+                        onClick={() => {
+                          setError("");
+                          api(`/api/v1/superadmin/schools/${school.id}/enter`, { method: "POST" })
+                            .then(() => { window.location.assign("/school/dashboard"); })
+                            .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not enter school."));
+                        }}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <span>Enter School Portal</span>
+                      </button>
+                    ) : null}
+
+                    <div className="grid grid-cols-4 gap-1.5">
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 py-1.5 text-[11px] font-semibold text-slate-700 shadow-2xs transition-all cursor-pointer"
+                        onClick={() => openEdit(school)}
+                        title="Edit school"
+                      >
+                        <Pencil className="h-3 w-3 text-slate-500" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 py-1.5 text-[11px] font-semibold text-slate-700 shadow-2xs transition-all cursor-pointer"
+                        onClick={() => {
+                          setAdminForm((current) => ({ ...current, schoolId: school.id, firstName: "", middleName: "", lastName: "", email: "", phone: "" }));
+                          setAssignAdminOpen(true);
+                        }}
+                        title="Assign administrator"
+                      >
+                        <UserPlus className="h-3 w-3 text-slate-500" />
+                        <span>Assign</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 py-1.5 text-[11px] font-semibold text-slate-600 shadow-2xs transition-all cursor-pointer"
+                        onClick={() => setConfirmSchool(school)}
+                        title={school.isActive ? "Deactivate school" : "Activate school"}
+                      >
+                        <span>{school.isActive ? "Deact." : "Act."}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-lg border border-rose-100 bg-white hover:bg-rose-50 py-1.5 text-[11px] font-semibold text-rose-600 shadow-2xs transition-all cursor-pointer"
+                        onClick={() => { setDeletePhrase(""); setDeleteSchool(school); }}
+                        title="Delete school"
+                      >
+                        <Trash2 className="h-3 w-3 text-rose-500" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </article>
             );
           })}
         </div>
-        {!visibleSchools.length ? <p className="py-10 text-center text-sm text-slate-500">No schools match these filters.</p> : null}
+
+        {!visibleSchools.length ? (
+          <div className="py-16 text-center">
+            <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-400">
+              <School className="h-6 w-6" />
+            </div>
+            <p className="mt-3 text-sm font-semibold text-slate-700">Wax dugsi ah lama helin</p>
+            <p className="mt-1 text-xs text-slate-500">Isku day inaad beddesho raadinta ama shaandhada aad dooratay.</p>
+            {(schoolSearch || typeFilter !== "ALL" || statusFilter !== "ALL") && (
+              <button
+                type="button"
+                onClick={() => { setSchoolSearch(""); setTypeFilter("ALL"); setStatusFilter("ALL"); }}
+                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-slate-100 hover:bg-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 cursor-pointer"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
+        ) : null}
       </section>
 
       {createSchoolOpen ? (
