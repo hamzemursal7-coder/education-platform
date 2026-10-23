@@ -897,13 +897,15 @@ export function ParentDashboard() {
                   {child.name}
                 </h3>
 
-                {/* Sub-row: Monospace ID + Relationship Badge */}
-                <div className="mt-1 flex items-center justify-center gap-1.5 text-xs text-slate-500">
-                  <span className="font-mono text-[11px] font-semibold text-slate-400">
-                    {child.permanentId}
-                  </span>
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                    {role?.label ?? child.relationship ?? "Child"}
+                {/* Student ID */}
+                <p className="mt-1 font-mono text-[11px] font-medium text-slate-400">
+                  {child.permanentId}
+                </p>
+
+                {/* Parent Relationship - Bold and clearly placed below ID */}
+                <div className="mt-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-0.5 text-xs font-bold text-slate-800 ring-1 ring-slate-200/90 shadow-2xs">
+                    {role?.label ?? child.relationship ?? "Guardian"}
                   </span>
                 </div>
               </div>
@@ -951,9 +953,6 @@ export function ParentDashboard() {
                     </span>
                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
                       <BadgeCheck className="h-3 w-3 text-blue-600" /> Certified
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">
-                      <FileText className="h-3 w-3 text-slate-400" /> Transcript
                     </span>
                   </>
                 )}
