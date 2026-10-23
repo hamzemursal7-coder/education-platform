@@ -12,10 +12,13 @@ import {
   Clock,
   Download,
   Eye,
+  EyeOff,
   FileText,
   Filter,
   Flame,
+  GraduationCap,
   HelpCircle,
+  Lock,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -29,7 +32,9 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Unlock,
   User,
+  UserCheck,
   Users,
   X,
 } from "lucide-react";
@@ -159,22 +164,6 @@ function sectionScore(subjects: ReviewSubject[], enrollmentId: string) {
   return { cells, ...provisionalTotal(cells) };
 }
 
-function statusBadge(status: BoardStatus) {
-  switch (status) {
-    case "APPROVED":
-    case "PUBLISHED":
-      return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200"><CheckCircle2 className="h-3 w-3" /> {status === "PUBLISHED" ? "Published" : "Approved"}</span>;
-    case "AWAITING":
-      return <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-200"><Clock className="h-3 w-3" /> Submitted</span>;
-    case "IN_PROGRESS":
-      return <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-700 border border-amber-200"><Clock className="h-3 w-3" /> In Progress</span>;
-    case "RETURNED":
-      return <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-semibold text-rose-700 border border-rose-200"><AlertTriangle className="h-3 w-3" /> Returned</span>;
-    default:
-      return <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600 border border-slate-200"><Clock className="h-3 w-3" /> Not Submitted</span>;
-  }
-}
-
 export function ResultsBoardPage() {
   const [years, setYears] = useState<Placement[]>([]);
   const [exams, setExams] = useState<Exam[]>([]);
@@ -182,11 +171,18 @@ export function ResultsBoardPage() {
   const [term, setTerm] = useState("");
   const [board, setBoard] = useState<Board | null>(null);
   const [review, setReview] = useState<ReviewClass[]>([]);
+
+  // Filtering states - strictly separating classes & sections
   const [classId, setClassId] = useState("");
   const [sectionName, setSectionName] = useState("");
-  const [subjectId, setSubjectId] = useState("");
-  const [activeTab, setActiveTab] = useState<"matrix" | "submissions" | "admin_entry">("matrix");
+  const [activeTab, setActiveTab] = useState<"subjects_table" | "results_matrix">("subjects_table");
 
+  // Detailed single subject inspection & marks editing
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [isEditingMarks, setIsEditingMarks] = useState(false);
+  const [drafts, setDrafts] = useState<Record<string, { marks: string; isAbsent: boolean }>>({});
+
+  // Modals & triggers
   const [preview, setPreview] = useState<PublishScope | null>(null);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -194,8 +190,7 @@ export function ResultsBoardPage() {
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
 
-  // Admin marks entry states
-  const [drafts, setDrafts] = useState<Record<string, { marks: string; isAbsent: boolean }>>({});
+  // Search in matrix
   const [searchQuery, setSearchQuery] = useState("");
 
   // Re-Exam Modal state
@@ -218,11 +213,7 @@ export function ResultsBoardPage() {
     classLabel: string;
   } | null>(null);
 
-  // Single sheet review
-  const [openSubjectSheet, setOpenSubjectSheet] = useState<ReviewSubject | null>(null);
-  const [rejectReason, setRejectReason] = useState("");
-  const [rejectingEnrollmentId, setRejectingEnrollmentId] = useState<string | null>(null);
-
+  // Load initial placements & exams
   useEffect(() => {
     Promise.all([
       api<Placement[]>("/api/v1/placement"),
@@ -232,7 +223,7 @@ export function ResultsBoardPage() {
       setExams(payload.exams);
       setYearId((current) => current || yearRows.find((year) => year.isCurrent)?.id || yearRows[0]?.id || "");
     }).catch((caught: unknown) => {
-      setError(caught instanceof Error ? caught.message : "Could not load exam data.");
+      setError(caught instanceof Error ? caught.message : "Could not load examination data.");
       setLoading(false);
     });
   }, []);
@@ -267,7 +258,7 @@ export function ResultsBoardPage() {
     setError("");
     loadData(exam.id)
       .catch((caught: unknown) => {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : "Could not load examination marks.");
+        if (!cancelled) setError(caught instanceof Error ? caught.message : "Could not load marks data.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -277,70 +268,80 @@ export function ResultsBoardPage() {
     };
   }, [exam?.id, tick]);
 
+  // Derived Classes for the selected exam
   const classes = review.map((item) => ({ id: item.id, label: item.label }));
+
+  // Set default class if not set
+  useEffect(() => {
+    if (!classId && classes.length > 0) {
+      setClassId(classes[0].id);
+    }
+  }, [classes, classId]);
+
+  // Available sections for the currently selected class ONLY (never mixed up)
   const sections = useMemo(() => {
-    return [...new Set((board?.rows ?? []).filter((row) => !classId || row.classGroupId === classId).map((row) => row.section))];
+    if (!classId) return [];
+    return [...new Set((board?.rows ?? []).filter((row) => row.classGroupId === classId).map((row) => row.section))];
   }, [board, classId]);
 
+  // Automatically select first section if not selected or invalid for this class
   useEffect(() => {
-    if (!sectionName && sections.length > 0) {
+    if (sections.length > 0 && (!sectionName || !sections.includes(sectionName))) {
       setSectionName(sections[0]);
     }
   }, [sections, sectionName]);
 
-  const subjectClass = review.find((item) => item.id === classId) ?? review.find((item) => item.subjects.some((subject) => subject.rows.some((row) => row.section === sectionName)));
-  const sectionAssignment = subjectClass?.sections?.find((section) => section.name === sectionName);
-  const subjectChoices = (subjectClass?.subjects ?? []).filter((subject) => !sectionAssignment?.subjectIds.length || !subject.subjectId || sectionAssignment.subjectIds.includes(subject.subjectId));
-  const pickedSubject = subjectChoices.find((subject) => subject.id === subjectId) ?? subjectChoices[0];
+  // Currently selected class group and its specific subjects
+  const currentClass = review.find((item) => item.id === classId);
+  const sectionAssignment = currentClass?.sections?.find((s) => s.name === sectionName);
+  const sectionSubjects = (currentClass?.subjects ?? []).filter((subject) => {
+    if (!sectionAssignment?.subjectIds?.length || !subject.subjectId) return true;
+    return sectionAssignment.subjectIds.includes(subject.subjectId);
+  });
 
-  useEffect(() => {
-    if (!subjectId && subjectChoices.length > 0) {
-      setSubjectId(subjectChoices[0].id);
-    }
-  }, [subjectChoices, subjectId]);
-
-  const roster = useMemo(() => {
-    return (pickedSubject?.rows ?? []).filter((row) => !sectionName || row.section === sectionName).sort((a, b) => a.rollNumber - b.rollNumber);
-  }, [pickedSubject, sectionName]);
-
+  // Students enrolled in this specific class & section
   const sectionPeople = useMemo(() => {
     const people = new Map<string, { name: string; permanentId: string; roll: number }>();
-    subjectChoices.forEach((subject) => subject.rows.filter((row) => row.section === sectionName).forEach((row) => {
-      people.set(row.enrollmentId, { name: row.student, permanentId: row.permanentId, roll: row.rollNumber });
-    }));
+    sectionSubjects.forEach((subject) => {
+      subject.rows.filter((row) => row.section === sectionName).forEach((row) => {
+        people.set(row.enrollmentId, { name: row.student, permanentId: row.permanentId, roll: row.rollNumber });
+      });
+    });
     return [...people.entries()].sort((a, b) => a[1].roll - b[1].roll);
-  }, [subjectChoices, sectionName]);
+  }, [sectionSubjects, sectionName]);
 
+  // Global counts across the entire exam
   const allReviewRows = review.flatMap((item) => item.subjects.flatMap((subject) => subject.rows));
   const readyCount = allReviewRows.filter((row) => row.state === "VERIFIED").length;
   const publishedCount = allReviewRows.filter((row) => row.state === "PUBLISHED").length;
   const pendingCount = allReviewRows.filter((row) => row.state === "SUBMITTED").length;
-  const notEnteredCount = allReviewRows.filter((row) => row.state === "WAITING").length;
+  const waitingCount = allReviewRows.filter((row) => row.state === "WAITING").length;
 
-  const filteredPeople = useMemo(() => {
-    if (!searchQuery.trim()) return sectionPeople;
-    const q = searchQuery.toLowerCase();
-    return sectionPeople.filter(([, p]) => p.name.toLowerCase().includes(q) || p.permanentId.toLowerCase().includes(q) || String(p.roll).includes(q));
-  }, [sectionPeople, searchQuery]);
+  // Selected subject for detailed marksheet
+  const activeSubject = sectionSubjects.find((s) => s.id === selectedSubjectId) ?? null;
+  const activeSubjectRoster = useMemo(() => {
+    if (!activeSubject) return [];
+    return activeSubject.rows.filter((row) => row.section === sectionName).sort((a, b) => a.rollNumber - b.rollNumber);
+  }, [activeSubject, sectionName]);
 
-  // Init drafts when switching subject in admin entry mode
+  // Initialize drafts when editing active subject
   useEffect(() => {
-    if (!roster.length) return;
+    if (!activeSubjectRoster.length) return;
     const next: Record<string, { marks: string; isAbsent: boolean }> = {};
-    roster.forEach((r) => {
+    activeSubjectRoster.forEach((r) => {
       next[r.enrollmentId] = {
         marks: r.marks != null ? String(r.marks) : "",
         isAbsent: Boolean(r.isAbsent),
       };
     });
     setDrafts(next);
-  }, [pickedSubject?.id, sectionName]);
+  }, [selectedSubjectId, isEditingMarks, activeSubjectRoster]);
 
-  // Action: Save marks entered by School Admin
-  async function handleSaveAdminMarks(approveImmediately = false) {
-    if (!exam || !pickedSubject) return;
+  // Action: Save marks entered/modified by Admin
+  async function handleSaveMarks(approveImmediately = false) {
+    if (!exam || !activeSubject) return;
     const rows: Array<{ enrollmentId: string; marks: number | null; isAbsent: boolean; comment: string }> = [];
-    for (const row of roster) {
+    for (const row of activeSubjectRoster) {
       const draft = drafts[row.enrollmentId];
       if (!draft) continue;
       if (draft.isAbsent) {
@@ -349,7 +350,7 @@ export function ResultsBoardPage() {
       }
       if (draft.marks === "" || draft.marks == null) continue;
       const num = Number(draft.marks);
-      if (!Number.isFinite(num) || num < 0 || num > pickedSubject.maxMarks) continue;
+      if (!Number.isFinite(num) || num < 0 || num > activeSubject.maxMarks) continue;
       rows.push({ enrollmentId: row.enrollmentId, marks: Math.round(num), isAbsent: false, comment: "" });
     }
 
@@ -363,24 +364,49 @@ export function ResultsBoardPage() {
     try {
       const result = await api<{ saved: number }>(`/api/v1/exams/${exam.id}/admin-marks`, {
         method: "POST",
-        body: JSON.stringify({ examSubjectId: pickedSubject.id, rows }),
+        body: JSON.stringify({ examSubjectId: activeSubject.id, rows }),
       });
 
       if (approveImmediately) {
         const freshReview = await api<{ classes: ReviewClass[] }>(`/api/v1/exams/${exam.id}/review`);
-        const freshSubject = freshReview.classes.flatMap((c) => c.subjects).find((s) => s.id === pickedSubject.id);
+        const freshSubject = freshReview.classes.flatMap((c) => c.subjects).find((s) => s.id === activeSubject.id);
         const submittable = freshSubject?.rows.filter((r) => r.section === sectionName && r.state === "SUBMITTED" && r.id) ?? [];
         for (const item of submittable) {
           if (item.id) await api(`/api/v1/result-sheets/${item.id}/verify`, { method: "POST" });
         }
-        setNotice(`Successfully saved and approved ${result.saved} student marks for ${pickedSubject.name}.`);
+        setNotice(`Marks saved and APPROVED. (Note: These stay private and hidden from students & parents until you click 'Publish Results').`);
       } else {
-        setNotice(`Successfully saved ${result.saved} student marks for ${pickedSubject.name}.`);
+        setNotice(`Saved ${result.saved} student marks for ${activeSubject.name}.`);
       }
 
+      setIsEditingMarks(false);
       setTick((t) => t + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Failed to save marks.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Action: Approve Entire Subject
+  async function handleApproveSubject(subjId: string) {
+    const target = currentClass?.subjects.find((s) => s.id === subjId);
+    const submittable = target?.rows.filter((r) => r.section === sectionName && r.state === "SUBMITTED" && r.id && !r.issue) ?? [];
+    if (!submittable.length) {
+      setError("No submitted marks are awaiting approval for this subject.");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    try {
+      for (const row of submittable) {
+        if (row.id) await api(`/api/v1/result-sheets/${row.id}/verify`, { method: "POST" });
+      }
+      setNotice(`Approved ${submittable.length} marks for ${target?.name}. They are now ready for publication!`);
+      setTick((t) => t + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to approve subject marks.");
     } finally {
       setBusy(false);
     }
@@ -406,7 +432,7 @@ export function ResultsBoardPage() {
           marks: Math.round(score),
         }),
       });
-      setNotice(`Re-exam mark of ${score}/${reExamTarget.maxMarks} saved for ${reExamTarget.studentName}. Overall average updated!`);
+      setNotice(`Re-exam mark of ${score}/${reExamTarget.maxMarks} saved for ${reExamTarget.studentName}. Recalculated total and average!`);
       setReExamTarget(null);
       setReExamMarks("");
       setTick((t) => t + 1);
@@ -424,32 +450,14 @@ export function ResultsBoardPage() {
     setError("");
     try {
       await api(`/api/v1/exams/${exam.id}/subjects/${subjectToDelete.id}`, { method: "DELETE" });
-      setNotice(`Subject "${subjectToDelete.name}" removed from exam. Student totals and averages recalculated.`);
+      setNotice(`Subject "${subjectToDelete.name}" removed from exam. Student marks deleted and averages recalculated.`);
       setSubjectToDelete(null);
+      if (selectedSubjectId === subjectToDelete.id) {
+        setSelectedSubjectId(null);
+      }
       setTick((t) => t + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Failed to remove subject from exam.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // Action: Approve All in Subject
-  async function handleApproveEntireSubject(subjId: string) {
-    const target = review.flatMap((c) => c.subjects).find((s) => s.id === subjId);
-    const submittable = target?.rows.filter((r) => r.section === sectionName && r.state === "SUBMITTED" && r.id && !r.issue) ?? [];
-    if (!submittable.length) return;
-
-    setBusy(true);
-    setError("");
-    try {
-      for (const row of submittable) {
-        if (row.id) await api(`/api/v1/result-sheets/${row.id}/verify`, { method: "POST" });
-      }
-      setNotice(`Approved ${submittable.length} marks for ${target?.name ?? "Subject"}.`);
-      setTick((t) => t + 1);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Failed to approve subject marks.");
     } finally {
       setBusy(false);
     }
@@ -463,7 +471,7 @@ export function ResultsBoardPage() {
     try {
       const result = await api<PublishScope>(`/api/v1/exams/${exam.id}/publish-accepted`, { method: "POST" });
       setPreview(null);
-      setNotice(result.published ? `Published ${result.studentResults} result records! Parents and students can now view them on their portals.` : "All approved marks are already published.");
+      setNotice(result.published ? `Successfully published ${result.studentResults} result records! Parents and students can now view them on their portals.` : "All approved marks are already published.");
       setTick((t) => t + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not publish results.");
@@ -472,11 +480,18 @@ export function ResultsBoardPage() {
     }
   }
 
-  // Export Section Results CSV
+  // Filter students in Results Matrix
+  const filteredPeople = useMemo(() => {
+    if (!searchQuery.trim()) return sectionPeople;
+    const q = searchQuery.toLowerCase();
+    return sectionPeople.filter(([, p]) => p.name.toLowerCase().includes(q) || p.permanentId.toLowerCase().includes(q) || String(p.roll).includes(q));
+  }, [sectionPeople, searchQuery]);
+
+  // Export Section CSV
   function exportSectionCSV() {
-    const header = ["Roll", "Student Name", "Student ID", ...subjectChoices.map((s) => `${s.name} (${s.maxMarks})`), "Total Obtained", "Max Possible", "Percentage", "Grade", "Status"];
+    const header = ["Roll", "Student Name", "Student ID", ...sectionSubjects.map((s) => `${s.name} (${s.maxMarks})`), "Total Obtained", "Max Possible", "Percentage", "Grade", "Status"];
     const lines = sectionPeople.map(([, person]) => {
-      const score = sectionScore(subjectChoices, person.permanentId);
+      const score = sectionScore(sectionSubjects, person.permanentId);
       const subjectCols = score.cells.map((cell) => {
         if (cell.absent) return "ABSENT (0)";
         if (cell.isReExam) return `${cell.marks ?? 0} [RE-EXAM]`;
@@ -494,38 +509,35 @@ export function ResultsBoardPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Results-${subjectClass?.label ?? "Class"}-Sec_${sectionName}-${exam?.term ?? "Term"}.csv`;
+    link.download = `Results-${currentClass?.label ?? "Class"}-Sec_${sectionName}-${exam?.term ?? "Term"}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
 
   return (
-    <div className="space-y-6 pb-12">
-      {/* EXECUTIVE HEADER & PUBLISH HERO */}
-      <section className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 text-white shadow-xl lg:p-8">
-        <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl" />
-        <div className="absolute -bottom-16 -left-16 h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl" />
-
-        <div className="relative flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-indigo-300 border border-indigo-500/30">
-                <Sparkles className="h-3.5 w-3.5 text-amber-300" /> School Admin Results Hub
+    <div className="space-y-6 pb-16">
+      {/* 1. TOP EXECUTIVE HEADER WITH PROMINENT VIBRANT PUBLISH BUTTON */}
+      <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:p-7">
+        <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold uppercase tracking-wider text-indigo-700 border border-indigo-200">
+                <Sparkles className="h-3.5 w-3.5 text-indigo-600" /> Exam Results Management
               </span>
-              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-slate-300 backdrop-blur-md">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 {years.find((y) => y.id === yearId)?.name ?? "Academic Year"} · {exam ? termLabel(exam.term) : "No Exam"}
               </span>
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl lg:text-4xl">
-              Examination Results & Marks Board
+            <h1 className="text-2xl font-black text-slate-900 sm:text-3xl">
+              School Examination Board
             </h1>
-            <p className="max-w-2xl text-sm text-slate-300 leading-relaxed">
-              Monitor teacher submissions, fill marks directly as Admin, manage student re-exams with instant average recalculation, remove obsolete subjects, and publish verified school results.
+            <p className="text-sm text-slate-500 max-w-xl">
+              Inspect submitted subjects per class and section, review teacher entries, edit marks with full admin authority, and publish verified school results.
             </p>
           </div>
 
-          {/* PROMINENT PUBLISH BUTTON CTA */}
-          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center lg:flex-col lg:items-end">
+          {/* EYE-CATCHING PROMINENT PUBLISH BUTTON */}
+          <div className="flex flex-col items-start gap-2.5 sm:items-end">
             <button
               type="button"
               disabled={!exam || busy || readyCount === 0}
@@ -537,49 +549,39 @@ export function ResultsBoardPage() {
                   .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not fetch publish scope."))
                   .finally(() => setBusy(false));
               }}
-              className={`group relative inline-flex items-center gap-3 overflow-hidden rounded-2xl px-6 py-4 text-base font-bold text-white shadow-2xl transition-all duration-300 ${
+              className={`group relative inline-flex items-center gap-3 overflow-hidden rounded-2xl px-6 py-4 text-base font-extrabold text-white shadow-xl transition-all duration-300 ${
                 readyCount > 0
-                  ? "bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 shadow-emerald-500/30 hover:shadow-emerald-500/50 hover:scale-[1.02] active:scale-[0.98]"
-                  : "bg-slate-800 text-slate-400 cursor-not-allowed border border-slate-700"
+                  ? "bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-500 shadow-emerald-500/30 hover:scale-[1.02] active:scale-[0.98]"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300 shadow-none"
               }`}
             >
-              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="grid h-9 w-9 place-items-center rounded-xl bg-white/20 text-white shadow-inner">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/20 text-white shadow-inner">
                 <Send className="h-5 w-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
               </div>
               <div className="text-left">
-                <span className="block text-xs uppercase tracking-wider text-emerald-100 font-semibold">Ready To Publish</span>
-                <span className="text-lg font-black tracking-wide">Publish Approved Results</span>
+                <span className="block text-xs uppercase tracking-wider text-emerald-100 font-semibold">Live Publishing</span>
+                <span className="text-lg font-black tracking-wide">Publish Results to Portal</span>
               </div>
-              {readyCount > 0 && (
-                <span className="ml-1 inline-flex items-center rounded-full bg-white px-2.5 py-1 text-xs font-black text-emerald-800 shadow-sm animate-pulse">
+              {readyCount > 0 ? (
+                <span className="ml-1 inline-flex items-center rounded-full bg-white px-3 py-1 text-xs font-black text-emerald-800 shadow-sm animate-pulse">
                   {readyCount} ready
+                </span>
+              ) : (
+                <span className="ml-1 inline-flex items-center rounded-full bg-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                  0 ready
                 </span>
               )}
             </button>
-            <p className="text-xs text-slate-400">
-              {publishedCount} marks published · {readyCount} awaiting publish · {pendingCount} awaiting approval
-            </p>
-          </div>
-        </div>
-
-        {/* METRIC PILLS */}
-        <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:gap-4 border-t border-white/10 pt-6">
-          <div className="rounded-2xl bg-white/5 p-3.5 backdrop-blur-md border border-white/10">
-            <p className="text-xs font-medium text-slate-400">Total Enrolled</p>
-            <p className="text-2xl font-bold text-white mt-0.5">{sectionPeople.length} <span className="text-xs font-normal text-slate-400">students in sec</span></p>
-          </div>
-          <div className="rounded-2xl bg-white/5 p-3.5 backdrop-blur-md border border-white/10">
-            <p className="text-xs font-medium text-slate-400">Subjects on Exam</p>
-            <p className="text-2xl font-bold text-indigo-300 mt-0.5">{subjectChoices.length} <span className="text-xs font-normal text-slate-400">subjects</span></p>
-          </div>
-          <div className="rounded-2xl bg-white/5 p-3.5 backdrop-blur-md border border-white/10">
-            <p className="text-xs font-medium text-emerald-400">Approved Marks</p>
-            <p className="text-2xl font-bold text-emerald-300 mt-0.5">{readyCount + publishedCount} <span className="text-xs font-normal text-slate-400">marks</span></p>
-          </div>
-          <div className="rounded-2xl bg-white/5 p-3.5 backdrop-blur-md border border-white/10">
-            <p className="text-xs font-medium text-amber-400">Needs Review / Entry</p>
-            <p className="text-2xl font-bold text-amber-300 mt-0.5">{pendingCount + notEnteredCount} <span className="text-xs font-normal text-slate-400">pending</span></p>
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+              <span><strong>{publishedCount}</strong> Published</span>
+              <span className="text-slate-300">|</span>
+              <span className="inline-block h-2 w-2 rounded-full bg-indigo-500" />
+              <span><strong>{readyCount}</strong> Approved (Private)</span>
+              <span className="text-slate-300">|</span>
+              <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />
+              <span><strong>{pendingCount + waitingCount}</strong> Pending Entry/Review</span>
+            </div>
           </div>
         </div>
       </section>
@@ -604,11 +606,18 @@ export function ResultsBoardPage() {
         </div>
       )}
 
-      {/* FILTER CONTROLS BAR */}
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+      {/* 2. STRICT SELECTION FILTERS (Year -> Term -> Class/Form -> Section) */}
+      <div className="grid gap-3.5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
         <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Academic Year
-          <select className={`${inputCls} mt-1.5 w-full font-medium`} value={yearId} onChange={(e) => setYearId(e.target.value)}>
+          1. Academic Year
+          <select
+            className={`${inputCls} mt-1.5 w-full font-semibold`}
+            value={yearId}
+            onChange={(e) => {
+              setYearId(e.target.value);
+              setSelectedSubjectId(null);
+            }}
+          >
             {years.map((item) => (
               <option key={item.id} value={item.id}>{item.name} {item.isCurrent ? "★ Active" : ""}</option>
             ))}
@@ -616,8 +625,15 @@ export function ResultsBoardPage() {
         </label>
 
         <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Exam Term
-          <select className={`${inputCls} mt-1.5 w-full font-medium`} value={exam?.term ?? ""} onChange={(e) => setTerm(e.target.value)}>
+          2. Exam Term
+          <select
+            className={`${inputCls} mt-1.5 w-full font-semibold`}
+            value={exam?.term ?? ""}
+            onChange={(e) => {
+              setTerm(e.target.value);
+              setSelectedSubjectId(null);
+            }}
+          >
             {yearExams.map((item) => (
               <option key={item.id} value={item.term}>{termLabel(item.term)}</option>
             ))}
@@ -626,9 +642,17 @@ export function ResultsBoardPage() {
         </label>
 
         <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Class / Form
-          <select className={`${inputCls} mt-1.5 w-full font-medium`} value={classId} onChange={(e) => { setClassId(e.target.value); setSectionName(""); setSubjectId(""); }}>
-            <option value="">All Classes</option>
+          3. Class / Form
+          <select
+            className={`${inputCls} mt-1.5 w-full font-semibold`}
+            value={classId}
+            onChange={(e) => {
+              setClassId(e.target.value);
+              setSectionName("");
+              setSelectedSubjectId(null);
+            }}
+          >
+            <option value="">Select a Class</option>
             {classes.map((item) => (
               <option key={item.id} value={item.id}>{item.label}</option>
             ))}
@@ -636,9 +660,16 @@ export function ResultsBoardPage() {
         </label>
 
         <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Section
-          <select className={`${inputCls} mt-1.5 w-full font-medium`} value={sectionName} onChange={(e) => setSectionName(e.target.value)}>
-            <option value="">Select section</option>
+          4. Section
+          <select
+            className={`${inputCls} mt-1.5 w-full font-semibold`}
+            value={sectionName}
+            onChange={(e) => {
+              setSectionName(e.target.value);
+              setSelectedSubjectId(null);
+            }}
+          >
+            <option value="">Select a Section</option>
             {sections.map((name) => (
               <option key={name} value={name}>Section {name}</option>
             ))}
@@ -646,69 +677,11 @@ export function ResultsBoardPage() {
         </label>
       </div>
 
-      {/* NAVIGATION TABS */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveTab("matrix")}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
-              activeTab === "matrix"
-                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
-            }`}
-          >
-            <Users className="h-4 w-4" /> Full Class Results Matrix
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("submissions")}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
-              activeTab === "submissions"
-                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
-            }`}
-          >
-            <BookOpen className="h-4 w-4" /> Submissions & Subject Actions
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("admin_entry")}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
-              activeTab === "admin_entry"
-                ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
-            }`}
-          >
-            <Pencil className="h-4 w-4" /> Direct Admin Marks Entry
-          </button>
-        </div>
-
-        {activeTab === "matrix" && sectionPeople.length > 0 && (
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={exportSectionCSV}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
-            >
-              <Download className="h-3.5 w-3.5" /> Export CSV
-            </button>
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
-            >
-              <Printer className="h-3.5 w-3.5" /> Print Sheet
-            </button>
-          </div>
-        )}
-      </div>
-
       {loading ? (
         <div className="grid place-items-center py-20">
           <div className="flex flex-col items-center gap-3">
             <div className="h-10 w-10 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
-            <p className="text-sm font-semibold text-slate-600">Loading student marks and statistics...</p>
+            <p className="text-sm font-semibold text-slate-600">Loading class examination data...</p>
           </div>
         </div>
       ) : !exam ? (
@@ -716,50 +689,480 @@ export function ResultsBoardPage() {
           <ShieldAlert className="mx-auto h-12 w-12 text-slate-400" />
           <h3 className="mt-3 text-lg font-bold text-slate-800">No Exam Created for Selected Term</h3>
           <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
-            Please configure the exam in the Exams management tab first, select the subjects, and then teachers and admins can enter marks.
+            Please configure the exam in the Exams tab first.
           </p>
         </div>
+      ) : !classId || !sectionName ? (
+        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-12 text-center">
+          <Filter className="mx-auto h-10 w-10 text-slate-400" />
+          <h3 className="mt-3 text-lg font-bold text-slate-800">Select Class and Section</h3>
+          <p className="mt-1 text-sm text-slate-500 max-w-md mx-auto">
+            Please choose a Class / Form and Section from the filters above to inspect its specific subjects and results.
+          </p>
+        </div>
+      ) : selectedSubjectId && activeSubject ? (
+        /* 3. DEDICATED SINGLE SUBJECT MARKSHEET (VIEW-ONLY BY DEFAULT, MUST CLICK EDIT TO MODIFY) */
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSubjectId(null);
+                  setIsEditingMarks(false);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Back to Subjects Table
+              </button>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {activeSubject.name} <span className="text-slate-400 font-normal">({currentClass?.label} · Section {sectionName})</span>
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Teacher: <strong className="text-slate-700">{activeSubject.teacher ?? "No teacher assigned"}</strong> · Max Marks: <strong>{activeSubject.maxMarks}</strong>
+                </p>
+              </div>
+            </div>
+
+            {/* EDIT LOCK TOGGLE & ACTIONS */}
+            <div className="flex flex-wrap items-center gap-2">
+              {!isEditingMarks ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingMarks(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 shadow-sm transition-all"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Edit Marks as Admin
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleApproveSubject(activeSubject.id)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 shadow-sm transition-all disabled:opacity-50"
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" /> Approve Subject Marks
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingMarks(false)}
+                    className="rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel Edit
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleSaveMarks(false)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                  >
+                    <Save className="h-3.5 w-3.5" /> Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleSaveMarks(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 shadow-sm"
+                  >
+                    <CheckCheck className="h-3.5 w-3.5" /> Save & Approve Now
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* NOTICE ABOUT PRIVATE APPROVED STATUS UNTIL PUBLISH */}
+          <div className="flex items-center gap-2.5 rounded-xl bg-slate-100 px-4 py-2.5 text-xs text-slate-600 border border-slate-200">
+            <ShieldCheck className="h-4 w-4 text-indigo-600 shrink-0" />
+            <span>
+              <strong>Privacy Rule:</strong> When you enter or approve marks, they remain <em>confidential and hidden</em> from students and parents until you click the <strong>Publish Results</strong> button above.
+            </span>
+          </div>
+
+          {/* STUDENT ROWS TABLE */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3.5 w-12">Roll</th>
+                    <th className="px-4 py-3.5 min-w-[220px]">Student Details</th>
+                    <th className="px-4 py-3.5 text-center">Marks (Max {activeSubject.maxMarks})</th>
+                    <th className="px-4 py-3.5 text-center">Absent?</th>
+                    <th className="px-4 py-3.5 text-center">Percentage</th>
+                    <th className="px-4 py-3.5 text-center">Grade</th>
+                    <th className="px-4 py-3.5 text-center">Status</th>
+                    <th className="px-4 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {activeSubjectRoster.map((row) => {
+                    const currentDraft = drafts[row.enrollmentId] ?? { marks: row.marks != null ? String(row.marks) : "", isAbsent: Boolean(row.isAbsent) };
+                    const isAbsent = isEditingMarks ? currentDraft.isAbsent : row.isAbsent;
+                    const displayMarks = isEditingMarks ? (isAbsent ? "" : currentDraft.marks) : (row.isAbsent ? null : row.marks);
+                    const num = Number(isEditingMarks ? currentDraft.marks : row.marks);
+                    const hasValidNum = !isAbsent && Number.isFinite(num) && (isEditingMarks ? currentDraft.marks !== "" : row.marks != null);
+                    const pct = hasValidNum ? Math.round((num / activeSubject.maxMarks) * 100) : null;
+                    const { grade, color: gradeColor } = calculateGrade(isAbsent ? 0 : pct);
+
+                    return (
+                      <tr key={row.enrollmentId} className="hover:bg-slate-50/50">
+                        <td className="px-4 py-3 text-xs font-bold text-slate-400">{row.rollNumber}</td>
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-900">{row.student}</p>
+                          <p className="text-[11px] font-mono text-slate-500">ID: {row.permanentId}</p>
+                        </td>
+
+                        {/* MARKS DISPLAY / INPUT */}
+                        <td className="px-4 py-3 text-center">
+                          {isEditingMarks ? (
+                            <input
+                              type="number"
+                              min={0}
+                              max={activeSubject.maxMarks}
+                              disabled={isAbsent}
+                              placeholder={isAbsent ? "ABS" : "0"}
+                              value={displayMarks ?? ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [row.enrollmentId]: { ...prev[row.enrollmentId], marks: val, isAbsent: false },
+                                }));
+                              }}
+                              className={`w-24 text-center font-bold text-base ${inputCls} ${
+                                isAbsent ? "bg-slate-100 cursor-not-allowed text-slate-400" : ""
+                              }`}
+                            />
+                          ) : isAbsent ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 border border-rose-200">
+                              ABS (0)
+                            </span>
+                          ) : row.isReExam ? (
+                            <span className="inline-flex items-center gap-1 rounded-lg bg-purple-50 px-2.5 py-1 text-xs font-bold text-purple-700 border border-purple-200">
+                              <Sparkles className="h-3 w-3 text-purple-600" /> {row.marks} <span className="text-[9px] text-purple-600 font-normal">(Re-Exam)</span>
+                            </span>
+                          ) : row.marks != null ? (
+                            <span className="font-bold text-slate-900 text-base">{row.marks}</span>
+                          ) : (
+                            <span className="text-xs italic text-slate-400">Not entered</span>
+                          )}
+                        </td>
+
+                        {/* ABSENT TOGGLE */}
+                        <td className="px-4 py-3 text-center">
+                          {isEditingMarks ? (
+                            <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={isAbsent}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setDrafts((prev) => ({
+                                    ...prev,
+                                    [row.enrollmentId]: { marks: checked ? "" : prev[row.enrollmentId]?.marks ?? "", isAbsent: checked },
+                                  }));
+                                }}
+                                className="h-4 w-4 rounded accent-rose-600"
+                              />
+                              <span className={isAbsent ? "text-rose-700 font-bold" : ""}>Absent</span>
+                            </label>
+                          ) : isAbsent ? (
+                            <span className="text-xs font-bold text-rose-600">Yes (0 Marks)</span>
+                          ) : (
+                            <span className="text-xs text-slate-400">No</span>
+                          )}
+                        </td>
+
+                        {/* PERCENTAGE */}
+                        <td className="px-4 py-3 text-center font-bold text-slate-800">
+                          {isAbsent ? (
+                            <span className="text-xs text-rose-600 font-bold">0%</span>
+                          ) : pct != null ? (
+                            `${pct}%`
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+
+                        {/* GRADE */}
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-block rounded-lg px-2.5 py-0.5 text-xs font-bold border ${gradeColor}`}>
+                            {grade}
+                          </span>
+                        </td>
+
+                        {/* STATE */}
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            row.state === "PUBLISHED" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
+                            row.state === "VERIFIED" ? "bg-indigo-50 text-indigo-700 border border-indigo-200" :
+                            row.state === "SUBMITTED" ? "bg-blue-50 text-blue-700 border border-blue-200" :
+                            "bg-slate-100 text-slate-600"
+                          }`}>
+                            {row.state === "PUBLISHED" ? "Published" : row.state === "VERIFIED" ? "Approved" : row.state === "SUBMITTED" ? "Submitted" : "Draft"}
+                          </span>
+                        </td>
+
+                        {/* ROW ACTIONS */}
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReExamTarget({
+                                studentName: row.student,
+                                permanentId: row.permanentId,
+                                enrollmentId: row.enrollmentId,
+                                subjectId: activeSubject.id,
+                                subjectName: activeSubject.name,
+                                maxMarks: activeSubject.maxMarks,
+                                currentMarks: row.marks,
+                                isAbsent: row.isAbsent,
+                              });
+                              setReExamMarks(row.marks != null ? String(row.marks) : "");
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                          >
+                            <RotateCcw className="h-3 w-3" /> Re-Exam
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       ) : (
-        <>
-          {/* TAB 1: FULL RESULTS MATRIX */}
-          {activeTab === "matrix" && (
+        /* 4. MAIN WORKSPACE: TABBED INTERFACE (1. SUBJECTS TABLE, 2. CLASS RESULTS MATRIX) */
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab("subjects_table")}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
+                  activeTab === "subjects_table"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                    : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
+                }`}
+              >
+                <BookOpen className="h-4 w-4" /> Section Subjects Table ({sectionSubjects.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("results_matrix")}
+                className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
+                  activeTab === "results_matrix"
+                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                    : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
+                }`}
+              >
+                <Users className="h-4 w-4" /> Class Results Matrix ({sectionPeople.length} Students)
+              </button>
+            </div>
+
+            {activeTab === "results_matrix" && sectionPeople.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={exportSectionCSV}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
+                >
+                  <Download className="h-3.5 w-3.5" /> Export CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
+                >
+                  <Printer className="h-3.5 w-3.5" /> Print Sheet
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* TAB 1: SECTION SUBJECTS TABLE (REPLACES CARDS AS REQUESTED) */}
+          {activeTab === "subjects_table" && (
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-6 py-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">
+                    Subjects in {currentClass?.label} · Section {sectionName}
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Click "Open Marksheet" on any subject to inspect, lock/unlock edit mode, or approve marks.
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-slate-600 rounded-lg bg-slate-100 px-3 py-1">
+                  Total: {sectionSubjects.length} Subjects
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                    <tr>
+                      <th className="px-5 py-3.5 w-12">#</th>
+                      <th className="px-5 py-3.5 min-w-[180px]">Subject Name</th>
+                      <th className="px-5 py-3.5 min-w-[180px]">Assigned Teacher</th>
+                      <th className="px-4 py-3.5 text-center">Max Marks</th>
+                      <th className="px-4 py-3.5 text-center">Progress / Submissions</th>
+                      <th className="px-4 py-3.5 text-center">Status</th>
+                      <th className="px-5 py-3.5 text-right min-w-[200px]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {sectionSubjects.map((subj, idx) => {
+                      const subjectRows = subj.rows.filter((r) => r.section === sectionName);
+                      const totalStudents = subjectRows.length;
+                      const enteredCount = subjectRows.filter((r) => r.marks != null || r.isAbsent).length;
+                      const approvedCount = subjectRows.filter((r) => r.state === "VERIFIED" || r.state === "PUBLISHED").length;
+                      const publishedRowsCount = subjectRows.filter((r) => r.state === "PUBLISHED").length;
+                      const absentCount = subjectRows.filter((r) => r.isAbsent).length;
+                      const isFullyApproved = totalStudents > 0 && approvedCount === totalStudents;
+                      const isFullyPublished = totalStudents > 0 && publishedRowsCount === totalStudents;
+                      const isFullySubmitted = totalStudents > 0 && enteredCount === totalStudents;
+
+                      return (
+                        <tr key={subj.id} className="hover:bg-indigo-50/20 transition-colors">
+                          <td className="px-5 py-4 text-xs font-bold text-slate-400">{idx + 1}</td>
+                          <td className="px-5 py-4">
+                            <span className="font-extrabold text-slate-900 text-base">{subj.name}</span>
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-indigo-700">
+                                <User className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="font-semibold text-slate-800 text-sm">
+                                {subj.teacher ?? <span className="text-slate-400 font-normal italic">No teacher assigned</span>}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-center font-bold text-slate-700">
+                            {subj.maxMarks}
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            <div className="inline-flex flex-col items-center">
+                              <span className="font-bold text-xs text-slate-800">
+                                {enteredCount} / {totalStudents} Entered
+                              </span>
+                              {absentCount > 0 && (
+                                <span className="text-[10px] font-bold text-rose-600">
+                                  ({absentCount} Absent)
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-center">
+                            {isFullyPublished ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
+                                <Eye className="h-3 w-3" /> Published
+                              </span>
+                            ) : isFullyApproved ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 border border-indigo-200">
+                                <CheckCircle2 className="h-3 w-3" /> Approved (Private)
+                              </span>
+                            ) : isFullySubmitted ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 border border-blue-200">
+                                <Clock className="h-3 w-3" /> Submitted
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700 border border-amber-200">
+                                <Clock className="h-3 w-3" /> In Progress ({totalStudents - enteredCount} left)
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-5 py-4 text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSubjectId(subj.id);
+                                  setIsEditingMarks(false);
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+                              >
+                                <Eye className="h-3.5 w-3.5" /> Open Marksheet
+                              </button>
+                              {enteredCount > approvedCount && (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void handleApproveSubject(subj.id)}
+                                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 shadow-sm transition-colors"
+                                >
+                                  <Check className="h-3.5 w-3.5" /> Approve
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSubjectToDelete({ id: subj.id, name: subj.name, classLabel: currentClass?.label ?? "Class" })}
+                                title="Remove subject from this exam"
+                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 px-2.5 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {!sectionSubjects.length && (
+                      <tr>
+                        <td colSpan={7} className="px-5 py-12 text-center text-slate-500">
+                          No subjects assigned to this section yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: FULL CLASS RESULTS MATRIX */}
+          {activeTab === "results_matrix" && (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">
-                    {subjectClass?.label ?? "Class"} · Section {sectionName || "All"}
+                  <h2 className="text-base font-bold text-slate-900">
+                    Results Matrix: {currentClass?.label} · Section {sectionName}
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Calculated with the school policy: Absent marks count as 0 against the student's average. Re-exams immediately restore their score.
+                    Absent subjects yield 0 and count in the denominator towards the average.
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Search student or roll..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-1.5 text-xs text-slate-800 outline-none focus:bg-white focus:border-indigo-400"
-                    />
-                  </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search student or roll..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-1.5 text-xs text-slate-800 outline-none focus:bg-white focus:border-indigo-400"
+                  />
                 </div>
               </div>
 
               <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-50/80 text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                    <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
                       <tr>
                         <th className="px-4 py-3.5 w-12">#</th>
                         <th className="px-4 py-3.5 min-w-[200px]">Student Details</th>
-                        {subjectChoices.map((s) => (
-                          <th key={s.id} className="px-3 py-3.5 text-center min-w-[110px]">
-                            <div className="flex flex-col items-center">
-                              <span className="font-bold text-slate-900 truncate max-w-[120px]">{s.name}</span>
-                              <span className="text-[10px] font-semibold text-slate-400 mt-0.5">Max {s.maxMarks}</span>
-                            </div>
+                        {sectionSubjects.map((s) => (
+                          <th key={s.id} className="px-3 py-3.5 text-center min-w-[100px]">
+                            <span className="font-bold text-slate-900 block truncate max-w-[110px]">{s.name}</span>
+                            <span className="text-[10px] text-slate-400 block font-normal">Max {s.maxMarks}</span>
                           </th>
                         ))}
                         <th className="px-3 py-3.5 text-center font-bold text-slate-800">Total Marks</th>
@@ -771,111 +1174,44 @@ export function ResultsBoardPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {filteredPeople.map(([enrollmentId, person], idx) => {
-                        const score = sectionScore(subjectChoices, enrollmentId);
+                        const score = sectionScore(sectionSubjects, enrollmentId);
                         const { grade, color: gradeColor } = calculateGrade(score.average);
                         const isPassing = score.average != null && score.average >= 50;
                         const hasAbsent = score.cells.some((c) => c.absent);
                         const hasFailingSubject = score.cells.some((c) => c.marks != null && c.marks < (c.subject.minMarks || c.maxMarks * 0.5));
 
                         return (
-                          <tr key={enrollmentId} className="hover:bg-indigo-50/30 transition-colors">
+                          <tr key={enrollmentId} className="hover:bg-indigo-50/20 transition-colors">
                             <td className="px-4 py-3 text-xs font-bold text-slate-400">{person.roll || idx + 1}</td>
                             <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-xs font-bold text-white shadow-sm">
-                                  {person.name.slice(0, 2).toUpperCase()}
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-900">{person.name}</p>
-                                  <p className="text-[11px] font-mono text-slate-500">ID: {person.permanentId}</p>
-                                </div>
-                              </div>
+                              <p className="font-bold text-slate-900">{person.name}</p>
+                              <p className="text-[11px] font-mono text-slate-500">ID: {person.permanentId}</p>
                             </td>
 
-                            {/* SUBJECT COLUMNS */}
-                            {score.cells.map((cell) => {
-                              const isSubAbsent = cell.absent;
-                              const isReExam = cell.isReExam;
-                              const isPassSub = cell.marks != null && cell.marks >= (cell.subject.minMarks || cell.maxMarks * 0.5);
+                            {score.cells.map((cell) => (
+                              <td key={cell.subject.id} className="px-3 py-3 text-center">
+                                {cell.absent ? (
+                                  <span className="inline-flex items-center rounded-lg bg-rose-50 px-2 py-0.5 text-xs font-bold text-rose-700 border border-rose-200">
+                                    ABS (0)
+                                  </span>
+                                ) : cell.isReExam ? (
+                                  <span className="inline-flex items-center gap-1 rounded-lg bg-purple-50 px-2 py-0.5 text-xs font-bold text-purple-700 border border-purple-200">
+                                    <Sparkles className="h-3 w-3 text-purple-600" /> {cell.marks}
+                                  </span>
+                                ) : cell.marks != null ? (
+                                  <span className={`text-sm font-bold ${cell.marks >= 50 ? "text-slate-900" : "text-rose-600"}`}>
+                                    {cell.marks}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs italic text-slate-400">Pending</span>
+                                )}
+                              </td>
+                            ))}
 
-                              return (
-                                <td key={cell.subject.id} className="px-3 py-3 text-center">
-                                  {isSubAbsent ? (
-                                    <div className="inline-flex flex-col items-center">
-                                      <span className="inline-flex items-center gap-0.5 rounded-lg bg-rose-50 px-2 py-0.5 text-xs font-bold text-rose-700 border border-rose-200">
-                                        ABS (0)
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setReExamTarget({
-                                            studentName: person.name,
-                                            permanentId: person.permanentId,
-                                            enrollmentId,
-                                            subjectId: cell.subject.id,
-                                            subjectName: cell.subject.name,
-                                            maxMarks: cell.maxMarks,
-                                            currentMarks: null,
-                                            isAbsent: true,
-                                          });
-                                          setReExamMarks("");
-                                        }}
-                                        className="mt-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800 hover:underline"
-                                      >
-                                        Take Re-Exam
-                                      </button>
-                                    </div>
-                                  ) : isReExam ? (
-                                    <div className="inline-flex flex-col items-center">
-                                      <span className="inline-flex items-center gap-1 rounded-lg bg-purple-50 px-2 py-0.5 text-xs font-bold text-purple-700 border border-purple-200 shadow-sm">
-                                        <Sparkles className="h-3 w-3 text-purple-600" /> {cell.marks}
-                                      </span>
-                                      <span className="text-[9px] font-semibold text-purple-500 mt-0.5">
-                                        Re-Exam {cell.originalMarks != null ? `(prev: ${cell.originalMarks})` : "(was absent)"}
-                                      </span>
-                                    </div>
-                                  ) : cell.marks != null ? (
-                                    <div className="inline-flex flex-col items-center">
-                                      <span className={`text-sm font-bold ${isPassSub ? "text-slate-900" : "text-rose-600"}`}>
-                                        {cell.marks}
-                                      </span>
-                                      {!isPassSub && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setReExamTarget({
-                                              studentName: person.name,
-                                              permanentId: person.permanentId,
-                                              enrollmentId,
-                                              subjectId: cell.subject.id,
-                                              subjectName: cell.subject.name,
-                                              maxMarks: cell.maxMarks,
-                                              currentMarks: cell.marks,
-                                              isAbsent: false,
-                                            });
-                                            setReExamMarks(String(cell.marks));
-                                          }}
-                                          className="text-[10px] font-bold text-indigo-600 hover:underline"
-                                        >
-                                          Re-Exam
-                                        </button>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs italic text-slate-400">Pending</span>
-                                  )}
-                                </td>
-                              );
-                            })}
-
-                            {/* TOTAL */}
-                            <td className="px-3 py-3 text-center">
-                              <span className="font-bold text-slate-900">
-                                {score.possible > 0 ? `${score.obtained} / ${score.possible}` : "—"}
-                              </span>
+                            <td className="px-3 py-3 text-center font-bold text-slate-900">
+                              {score.possible > 0 ? `${score.obtained} / ${score.possible}` : "—"}
                             </td>
 
-                            {/* AVERAGE */}
                             <td className="px-3 py-3 text-center">
                               {score.average != null ? (
                                 <span className={`text-sm font-extrabold ${score.average >= 50 ? "text-slate-900" : "text-rose-600"}`}>
@@ -886,352 +1222,52 @@ export function ResultsBoardPage() {
                               )}
                             </td>
 
-                            {/* GRADE */}
                             <td className="px-3 py-3 text-center">
                               <span className={`inline-block rounded-lg px-2.5 py-0.5 text-xs font-bold border ${gradeColor}`}>
                                 {grade}
                               </span>
                             </td>
 
-                            {/* STATUS */}
                             <td className="px-3 py-3 text-center">
                               {!score.final ? (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 border border-amber-200">
                                   Provisional
                                 </span>
                               ) : isPassing ? (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 border border-emerald-200">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700 border border-emerald-200">
                                   <Check className="h-3 w-3" /> Passed
                                 </span>
                               ) : (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-700 border border-rose-200">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-bold text-rose-700 border border-rose-200">
                                   Failed
                                 </span>
                               )}
                             </td>
 
-                            {/* ACTIONS */}
                             <td className="px-4 py-3 text-right">
-                              <div className="inline-flex items-center gap-1.5">
-                                {(hasAbsent || hasFailingSubject) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      // pick first absent or failing subject
-                                      const badCell = score.cells.find((c) => c.absent || (c.marks != null && c.marks < 50)) ?? score.cells[0];
-                                      setReExamTarget({
-                                        studentName: person.name,
-                                        permanentId: person.permanentId,
-                                        enrollmentId,
-                                        subjectId: badCell.subject.id,
-                                        subjectName: badCell.subject.name,
-                                        maxMarks: badCell.maxMarks,
-                                        currentMarks: badCell.marks,
-                                        isAbsent: badCell.absent,
-                                      });
-                                      setReExamMarks(badCell.marks != null ? String(badCell.marks) : "");
-                                    }}
-                                    className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors"
-                                  >
-                                    <RotateCcw className="h-3.5 w-3.5" /> Re-Exam
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-
-                      {!filteredPeople.length && (
-                        <tr>
-                          <td colSpan={7 + subjectChoices.length} className="px-4 py-12 text-center text-slate-500">
-                            No students match your criteria in this section.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: CLASS & SUBJECT SUBMISSIONS DASHBOARD */}
-          {activeTab === "submissions" && (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="text-lg font-bold text-slate-900">Class & Section Submission Status</h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Inspect which subjects teachers have submitted. As an Admin, you can directly enter missing marks, approve submitted sheets, or remove subjects entirely from the exam.
-                </p>
-              </div>
-
-              <div className="grid gap-6 md:grid-cols-2">
-                {subjectChoices.map((subj) => {
-                  const subjectRows = subj.rows.filter((r) => !sectionName || r.section === sectionName);
-                  const totalCount = subjectRows.length;
-                  const enteredCount = subjectRows.filter((r) => r.marks != null || r.isAbsent).length;
-                  const approvedCount = subjectRows.filter((r) => r.state === "VERIFIED" || r.state === "PUBLISHED").length;
-                  const absentCount = subjectRows.filter((r) => r.isAbsent).length;
-                  const reExamCount = subjectRows.filter((r) => r.isReExam || r.comment?.startsWith("RE_EXAM")).length;
-                  const isFullySubmitted = totalCount > 0 && enteredCount === totalCount;
-                  const isFullyApproved = totalCount > 0 && approvedCount === totalCount;
-
-                  return (
-                    <article key={subj.id} className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="grid h-10 w-10 place-items-center rounded-2xl bg-indigo-50 text-indigo-700 font-bold border border-indigo-100">
-                              <BookOpen className="h-5 w-5" />
-                            </span>
-                            <div>
-                              <h3 className="text-lg font-extrabold text-slate-900">{subj.name}</h3>
-                              <p className="text-xs text-slate-500">
-                                Assigned Teacher: <span className="font-semibold text-slate-700">{subj.teacher ?? "Not Assigned"}</span>
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* STATUS BADGE */}
-                        <div>
-                          {isFullyApproved ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 border border-emerald-200">
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Approved
-                            </span>
-                          ) : isFullySubmitted ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 border border-indigo-200">
-                              <Clock className="h-3.5 w-3.5" /> Submitted
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 border border-amber-200">
-                              <Clock className="h-3.5 w-3.5" /> Pending ({totalCount - enteredCount} left)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* STATS PROGRESS */}
-                      <div className="mt-5 space-y-2">
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-600">
-                          <span>Progress: {enteredCount} / {totalCount} Students</span>
-                          <span>{totalCount > 0 ? Math.round((enteredCount / totalCount) * 100) : 0}%</span>
-                        </div>
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className={`h-full transition-all duration-500 ${isFullyApproved ? "bg-emerald-500" : isFullySubmitted ? "bg-indigo-600" : "bg-amber-500"}`}
-                            style={{ width: `${totalCount > 0 ? (enteredCount / totalCount) * 100 : 0}%` }}
-                          />
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-[11px] text-slate-500 pt-1">
-                          <span className="rounded-md bg-slate-50 px-2 py-0.5 border border-slate-200">Max: <strong>{subj.maxMarks}</strong></span>
-                          {absentCount > 0 && (
-                            <span className="rounded-md bg-rose-50 px-2 py-0.5 text-rose-700 border border-rose-200">
-                              <strong>{absentCount}</strong> Absent
-                            </span>
-                          )}
-                          {reExamCount > 0 && (
-                            <span className="rounded-md bg-purple-50 px-2 py-0.5 text-purple-700 border border-purple-200">
-                              <strong>{reExamCount}</strong> Re-Exams
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* ACTION BUTTONS */}
-                      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSubjectId(subj.id);
-                              setActiveTab("admin_entry");
-                            }}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-50 px-3.5 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors"
-                          >
-                            <Pencil className="h-3.5 w-3.5" /> Fill as Admin
-                          </button>
-                          {enteredCount > approvedCount && (
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void handleApproveEntireSubject(subj.id)}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-500 transition-colors shadow-sm"
-                            >
-                              <Check className="h-3.5 w-3.5" /> Approve Sheet
-                            </button>
-                          )}
-                        </div>
-
-                        {/* REMOVE SUBJECT FROM EXAM BUTTON */}
-                        <button
-                          type="button"
-                          onClick={() => setSubjectToDelete({ id: subj.id, name: subj.name, classLabel: subjectClass?.label ?? "Class" })}
-                          title="Remove this subject from the exam and clear marks"
-                          className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 border border-rose-200 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> Remove Subject
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: DIRECT ADMIN MARKS ENTRY */}
-          {activeTab === "admin_entry" && (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-lg bg-indigo-100 p-1.5 text-indigo-700">
-                      <Pencil className="h-4 w-4" />
-                    </span>
-                    <h2 className="text-lg font-bold text-slate-900">
-                      Direct Marks Entry: {pickedSubject?.name ?? "Subject"}
-                    </h2>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Enter or modify marks directly as School Admin. Check "Absent" to mark 0 (this will count in the denominator towards student's average).
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void handleSaveAdminMarks(false)}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
-                  >
-                    <Save className="h-4 w-4" /> Save as Draft
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void handleSaveAdminMarks(true)}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-500 transition-colors shadow-sm"
-                  >
-                    <CheckCheck className="h-4 w-4" /> Save & Approve Now
-                  </button>
-                </div>
-              </div>
-
-              {/* SUBJECT SELECTOR PILLS */}
-              <div className="flex flex-wrap gap-2">
-                {subjectChoices.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSubjectId(s.id)}
-                    className={`rounded-xl px-4 py-2 text-xs font-bold transition-all ${
-                      s.id === pickedSubject?.id
-                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                        : "bg-white text-slate-700 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                  >
-                    {s.name} <span className="text-[10px] opacity-75 font-normal">({s.maxMarks})</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* ENTRY TABLE */}
-              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
-                      <tr>
-                        <th className="px-4 py-3 w-12">#</th>
-                        <th className="px-4 py-3 min-w-[220px]">Student Details</th>
-                        <th className="px-4 py-3 text-center">Max Marks</th>
-                        <th className="px-4 py-3 text-center min-w-[140px]">Enter Marks</th>
-                        <th className="px-4 py-3 text-center">Absent?</th>
-                        <th className="px-4 py-3 text-center">Percentage</th>
-                        <th className="px-4 py-3 text-center">Calculated Grade</th>
-                        <th className="px-4 py-3 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {roster.map((row, idx) => {
-                        const currentDraft = drafts[row.enrollmentId] ?? { marks: "", isAbsent: false };
-                        const num = Number(currentDraft.marks);
-                        const hasScore = !currentDraft.isAbsent && currentDraft.marks !== "" && Number.isFinite(num);
-                        const pct = hasScore && pickedSubject ? Math.round((num / pickedSubject.maxMarks) * 100) : null;
-                        const { grade, color: gradeColor } = calculateGrade(pct);
-
-                        return (
-                          <tr key={row.enrollmentId} className="hover:bg-slate-50/50">
-                            <td className="px-4 py-3 text-xs font-bold text-slate-400">{row.rollNumber || idx + 1}</td>
-                            <td className="px-4 py-3">
-                              <p className="font-bold text-slate-900">{row.student}</p>
-                              <p className="text-xs font-mono text-slate-500">{row.permanentId}</p>
-                            </td>
-                            <td className="px-4 py-3 text-center font-bold text-slate-700">
-                              {pickedSubject?.maxMarks ?? 100}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <input
-                                type="number"
-                                min={0}
-                                max={pickedSubject?.maxMarks ?? 100}
-                                disabled={currentDraft.isAbsent}
-                                placeholder={currentDraft.isAbsent ? "ABS" : "0"}
-                                value={currentDraft.isAbsent ? "" : currentDraft.marks}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setDrafts((prev) => ({
-                                    ...prev,
-                                    [row.enrollmentId]: { ...prev[row.enrollmentId], marks: val, isAbsent: false },
-                                  }));
-                                }}
-                                className={`w-28 text-center font-extrabold text-base ${inputCls} ${
-                                  currentDraft.isAbsent ? "bg-slate-100 cursor-not-allowed text-slate-400" : ""
-                                }`}
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-semibold text-slate-700">
-                                <input
-                                  type="checkbox"
-                                  checked={currentDraft.isAbsent}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    setDrafts((prev) => ({
-                                      ...prev,
-                                      [row.enrollmentId]: { marks: checked ? "" : prev[row.enrollmentId]?.marks ?? "", isAbsent: checked },
-                                    }));
+                              {(hasAbsent || hasFailingSubject) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const badCell = score.cells.find((c) => c.absent || (c.marks != null && c.marks < 50)) ?? score.cells[0];
+                                    setReExamTarget({
+                                      studentName: person.name,
+                                      permanentId: person.permanentId,
+                                      enrollmentId,
+                                      subjectId: badCell.subject.id,
+                                      subjectName: badCell.subject.name,
+                                      maxMarks: badCell.maxMarks,
+                                      currentMarks: badCell.marks,
+                                      isAbsent: badCell.absent,
+                                    });
+                                    setReExamMarks(badCell.marks != null ? String(badCell.marks) : "");
                                   }}
-                                  className="h-4 w-4 rounded accent-rose-600"
-                                />
-                                <span className={currentDraft.isAbsent ? "text-rose-700 font-bold" : ""}>Absent</span>
-                              </label>
-                            </td>
-                            <td className="px-4 py-3 text-center font-bold text-slate-800">
-                              {currentDraft.isAbsent ? (
-                                <span className="text-xs text-rose-600 font-bold">0% (Absent)</span>
-                              ) : pct != null ? (
-                                `${pct}%`
-                              ) : (
-                                "—"
+                                  className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1.5 text-xs font-bold text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition-colors"
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5" /> Re-Exam
+                                </button>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`inline-block rounded-lg px-2.5 py-0.5 text-xs font-bold border ${gradeColor}`}>
-                                {grade}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                row.state === "PUBLISHED" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
-                                row.state === "VERIFIED" ? "bg-emerald-50 text-emerald-700 border border-emerald-200" :
-                                row.state === "SUBMITTED" ? "bg-indigo-50 text-indigo-700 border border-indigo-200" :
-                                "bg-slate-100 text-slate-600"
-                              }`}>
-                                {row.state === "PUBLISHED" ? "Published" : row.state === "VERIFIED" ? "Approved" : row.state === "SUBMITTED" ? "Submitted" : "Not Entered"}
-                              </span>
-                            </td>
                           </tr>
                         );
                       })}
@@ -1241,7 +1277,7 @@ export function ResultsBoardPage() {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* RE-EXAM MODAL */}
