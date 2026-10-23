@@ -274,7 +274,7 @@ export function Shell({
       : location.pathname.startsWith("/parent/attendance")
         ? "Track daily and monthly attendance records and teacher notes for your children."
       : location.pathname.startsWith("/parent")
-        ? "Manage your children, view their school information, fees and announcements."
+        ? "Track your children's daily attendance, academic results, and school updates."
       : location.pathname.startsWith("/teacher/marks")
         ? "Choose your school, year, and exam, then open the marksheet for your subject."
       : location.pathname.startsWith("/teacher/exams")

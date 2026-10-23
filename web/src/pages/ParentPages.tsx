@@ -758,25 +758,32 @@ export function ParentDashboard() {
   });
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="space-y-4 pb-10">
       {error ? <p className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-sm text-rose-800">{error}</p> : null}
 
-      {/* Header and Filter Row */}
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-4">
-        <div>
-          <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900">Your Children</h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Below are the children linked to your parent account.
-          </p>
+      {/* Clean Single-line Toolbar (No redundant duplicate headers) */}
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-3">
+        <div className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-xl bg-blue-50 text-blue-600 ring-1 ring-blue-100">
+            <Users className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="text-xs sm:text-sm font-bold text-slate-900">
+              {children.length} {children.length === 1 ? "Child Enrolled" : "Children Enrolled"}
+            </h2>
+            <p className="text-[11px] text-slate-500">
+              Select a child to view their academic records and attendance
+            </p>
+          </div>
         </div>
 
         {/* Filter Pills Tabs */}
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          <div className="inline-flex items-center rounded-2xl border border-slate-200 bg-slate-100/80 p-1 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-1.5 self-start sm:self-auto">
+          <div className="inline-flex items-center rounded-xl border border-slate-200 bg-slate-100/80 p-0.5 shadow-2xs">
             <button
               type="button"
               onClick={() => setStatusTab("ALL")}
-              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
                 statusTab === "ALL"
                   ? "bg-white text-slate-900 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
@@ -787,7 +794,7 @@ export function ParentDashboard() {
             <button
               type="button"
               onClick={() => setStatusTab("ACTIVE")}
-              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
                 statusTab === "ACTIVE"
                   ? "bg-white text-emerald-700 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
@@ -798,7 +805,7 @@ export function ParentDashboard() {
             <button
               type="button"
               onClick={() => setStatusTab("ALUMNI")}
-              className={`rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition-all ${
                 statusTab === "ALUMNI"
                   ? "bg-white text-blue-700 shadow-xs"
                   : "text-slate-600 hover:text-slate-900"
@@ -807,21 +814,17 @@ export function ParentDashboard() {
               Alumni ({alumniCount})
             </button>
           </div>
-
-          <span className="rounded-2xl border border-blue-100 bg-blue-50/80 px-3 py-1.5 text-xs font-bold text-blue-700 shadow-2xs">
-            {children.length} {children.length === 1 ? "child" : "children"}
-          </span>
         </div>
       </section>
 
-      {/* Children Cards Grid */}
+      {/* Children Cards Grid - Compact, perfectly proportioned, with prominent visible shadow */}
       {!visible.length && !error ? (
-        <div className="rounded-3xl border border-dashed border-slate-300 bg-white py-12 text-center text-sm text-slate-500 shadow-sm">
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-10 text-center text-xs text-slate-500 shadow-sm">
           No children match the selected filter.
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3.5 sm:gap-4">
         {visible.map((child) => {
           const initials = child.name
             .split(" ")
@@ -836,17 +839,17 @@ export function ParentDashboard() {
           return (
             <article
               key={child.id}
-              className="group relative flex flex-col justify-between rounded-3xl border border-slate-200/90 bg-white p-5 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300"
+              className="group relative flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-white p-3.5 sm:p-4 shadow-[0_4px_20px_rgba(0,0,0,0.08),0_1px_3px_rgba(0,0,0,0.06)] hover:shadow-[0_12px_28px_rgba(0,0,0,0.13),0_4px_8px_rgba(0,0,0,0.08)] hover:-translate-y-1 hover:border-blue-300/80 transition-all duration-300"
             >
               {/* Top Header Pill inside card */}
-              <div className="flex items-center justify-end w-full mb-1">
+              <div className="flex items-center justify-end w-full mb-0.5">
                 {isActive ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
                     <Check className="h-3 w-3 stroke-[3]" />
                     Active
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
                     <BadgeCheck className="h-3.5 w-3.5 text-blue-600" />
                     Graduated
                   </span>
@@ -855,16 +858,16 @@ export function ParentDashboard() {
 
               {/* Centered Avatar with distinctive Green Tick / Blue Tick */}
               <div className="flex flex-col items-center text-center">
-                <div className="relative mx-auto my-1">
+                <div className="relative mx-auto my-0.5">
                   {child.photoUrl ? (
                     <img
                       src={child.photoUrl}
                       alt={child.name}
-                      className="h-20 w-20 rounded-full object-cover ring-4 ring-slate-100 shadow-sm"
+                      className="h-14 w-14 sm:h-16 sm:w-16 rounded-full object-cover ring-3 ring-slate-100 shadow-sm"
                     />
                   ) : (
                     <div
-                      className={`grid h-20 w-20 place-items-center rounded-full font-black text-xl tracking-wider ring-4 shadow-inner ${
+                      className={`grid h-14 w-14 sm:h-16 sm:w-16 place-items-center rounded-full font-black text-sm sm:text-base tracking-wider ring-3 shadow-inner ${
                         isActive
                           ? "bg-gradient-to-br from-violet-100 via-purple-50 to-indigo-100 text-purple-700 ring-purple-100/90"
                           : "bg-gradient-to-br from-sky-100 via-blue-50 to-indigo-100 text-blue-700 ring-blue-100/90"
@@ -877,101 +880,101 @@ export function ParentDashboard() {
                   {/* Distinctive Tick Badge at Avatar Bottom-Right */}
                   {isActive ? (
                     <span
-                      className="absolute -bottom-0.5 -right-0.5 grid h-6 w-6 place-items-center rounded-full bg-emerald-500 text-white ring-2 ring-white shadow-xs"
+                      className="absolute -bottom-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white ring-2 ring-white shadow-xs"
                       title="Active Enrolled (Green Tick)"
                     >
-                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                      <Check className="h-3 w-3 stroke-[3]" />
                     </span>
                   ) : (
                     <span
-                      className="absolute -bottom-0.5 -right-0.5 grid h-6 w-6 place-items-center rounded-full bg-blue-600 text-white ring-2 ring-white shadow-xs"
+                      className="absolute -bottom-0.5 -right-0.5 grid h-5 w-5 place-items-center rounded-full bg-blue-600 text-white ring-2 ring-white shadow-xs"
                       title="Graduated / Alumni (Blue Tick)"
                     >
-                      <Check className="h-3.5 w-3.5 stroke-[3]" />
+                      <Check className="h-3 w-3 stroke-[3]" />
                     </span>
                   )}
                 </div>
 
                 {/* Student Full Name */}
-                <h3 className="mt-2.5 text-base font-bold text-slate-900 truncate max-w-full capitalize tracking-tight" title={child.name}>
+                <h3 className="mt-1.5 text-sm sm:text-base font-bold text-slate-900 truncate max-w-full capitalize tracking-tight" title={child.name}>
                   {child.name}
                 </h3>
 
                 {/* Student ID */}
-                <p className="mt-1 font-mono text-[11px] font-medium text-slate-400">
+                <p className="font-mono text-[11px] font-medium text-slate-400 mt-0.5">
                   {child.permanentId}
                 </p>
 
                 {/* Parent Relationship - Bold and clearly placed below ID */}
-                <div className="mt-1.5">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-0.5 text-xs font-bold text-slate-800 ring-1 ring-slate-200/90 shadow-2xs">
+                <div className="mt-1">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-700 ring-1 ring-slate-200/80 shadow-2xs">
                     {role?.label ?? child.relationship ?? "Guardian"}
                   </span>
                 </div>
               </div>
 
               {/* Middle Placement Box (School, Class & Year) */}
-              <div className="my-3.5 rounded-2xl bg-slate-50/90 border border-slate-100 p-3 text-center space-y-1">
-                <div className="flex items-center justify-center gap-1 text-xs font-bold text-slate-700">
-                  <span className={`h-2 w-2 rounded-full shrink-0 ${isActive ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
-                  <School className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <div className="my-2.5 rounded-xl bg-slate-50/90 border border-slate-100 p-2 sm:p-2.5 text-center space-y-0.5">
+                <div className="flex items-center justify-center gap-1 text-[11px] sm:text-xs font-bold text-slate-700">
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${isActive ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+                  <School className="h-3 w-3 text-slate-400 shrink-0" />
                   <span className="truncate">{child.school || "School"}</span>
                 </div>
-                <p className="text-[11px] text-slate-500 font-medium truncate">
+                <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium truncate">
                   {child.level ? `${child.level} · Sec ${child.section}` : "Enrolled"} {child.year ? `(${child.year})` : ""}
                 </p>
               </div>
 
-              {/* Real Data Metric Tags Row */}
-              <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs">
+              {/* Real Data Metric Tags Row (Compact & Clean) */}
+              <div className="flex flex-wrap items-center justify-center gap-1 text-[11px]">
                 {isActive ? (
                   <>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
                       <CheckCircle2 className="h-3 w-3 text-emerald-600" />
                       {child.attendanceRate !== null && child.attendanceRate !== undefined
                         ? `${child.attendanceRate}% Attend`
                         : "Attendance Active"}
                     </span>
                     {child.publishedExamsCount && child.publishedExamsCount > 0 ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
                         <GraduationCap className="h-3 w-3 text-blue-600" /> {child.publishedExamsCount} Results
                       </span>
                     ) : child.rollNumber != null ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-slate-700">
                         Roll #{child.rollNumber}
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] sm:text-[11px] font-semibold text-slate-700">
                         Enrolled
                       </span>
                     )}
                   </>
                 ) : (
                   <>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-[11px] font-bold text-purple-700 ring-1 ring-inset ring-purple-600/20">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-purple-700 ring-1 ring-inset ring-purple-600/20">
                       <Sparkles className="h-3 w-3 text-purple-600" /> Class {child.graduationYear || (child.year ? child.year.slice(0, 4) : "2024")}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] sm:text-[11px] font-bold text-blue-700 ring-1 ring-inset ring-blue-600/20">
                       <BadgeCheck className="h-3 w-3 text-blue-600" /> Certified
                     </span>
                   </>
                 )}
               </div>
 
-              {/* Bottom Action Button */}
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center gap-2">
+              {/* Bottom Action Buttons (Compact height) */}
+              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center gap-1.5">
                 <Link
                   to={`/parent/children/${child.id}`}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl border border-slate-200 bg-white py-2 text-xs sm:text-sm font-bold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300 transition-colors"
+                  className="flex-1 inline-flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white py-1.5 px-2.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 hover:border-slate-300 transition-colors"
                 >
-                  View Student Portal <ChevronRight className="h-4 w-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                  View Student Portal <ChevronRight className="h-3.5 w-3.5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
                 </Link>
                 <Link
                   to={`/parent/attendance?child=${child.id}`}
                   title="View Child Attendance"
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 shadow-2xs transition-colors"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 shadow-2xs transition-colors"
                 >
-                  <CalendarCheck2 className="h-4 w-4" />
+                  <CalendarCheck2 className="h-3.5 w-3.5" />
                 </Link>
               </div>
             </article>
