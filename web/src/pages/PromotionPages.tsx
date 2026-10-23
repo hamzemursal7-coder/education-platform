@@ -1,7 +1,41 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { GraduationCap, Loader2, Users } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Award,
+  BookOpen,
+  Check,
+  CheckCheck,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Download,
+  ExternalLink,
+  Filter,
+  GraduationCap,
+  Info,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Search,
+  Send,
+  ShieldAlert,
+  ShieldCheck,
+  Sparkles,
+  User,
+  UserCheck,
+  Users,
+  X,
+} from "lucide-react";
 import { api } from "../lib/api";
+
+type SchoolType = "PRIMARY_ONLY" | "SECONDARY_ONLY" | "PRIMARY_AND_SECONDARY";
 
 type YearOption = {
   id: string;
@@ -45,20 +79,29 @@ type SectionPayload = {
   rows: Omit<PromotionRow, "selected" | "action" | "targetSectionId">[];
 };
 
+const inputCls = "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100";
+
 const statusLabel: Record<PromotionRow["status"], string> = {
-  PASS: "Pass",
-  FAIL: "Fail",
-  REVIEW: "Borderline",
+  PASS: "Passed (Eligible)",
+  FAIL: "Failed (Repeat)",
+  REVIEW: "Review Required",
   GRADUATION: "Eligible for Completion",
   PENDING: "Results Not Yet Published",
 };
 
-const statusClass: Record<PromotionRow["status"], string> = {
-  PASS: "bg-emerald-50 text-emerald-700",
-  FAIL: "bg-rose-50 text-rose-700",
-  REVIEW: "bg-amber-50 text-amber-700",
-  GRADUATION: "bg-blue-50 text-blue-700",
-  PENDING: "bg-slate-100 text-slate-600",
+const statusBadge = (status: PromotionRow["status"]) => {
+  switch (status) {
+    case "PASS":
+      return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-bold text-emerald-700 border border-emerald-200"><Check className="h-3 w-3" /> Passed</span>;
+    case "FAIL":
+      return <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-bold text-rose-700 border border-rose-200"><AlertCircle className="h-3 w-3" /> Failed</span>;
+    case "REVIEW":
+      return <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700 border border-amber-200"><AlertTriangle className="h-3 w-3" /> Review Required</span>;
+    case "GRADUATION":
+      return <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-bold text-purple-700 border border-purple-200"><GraduationCap className="h-3 w-3" /> Alumni Eligible</span>;
+    default:
+      return <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 border border-slate-200"><Clock className="h-3 w-3" /> Results Pending</span>;
+  }
 };
 
 function percent(value: number | null) {
@@ -92,54 +135,19 @@ function sectionsFor(row: PromotionRow) {
 }
 
 function destinationText(row: PromotionRow) {
-  if (row.action === "ALUMNI") return "Alumni — no next enrollment";
+  if (row.action === "ALUMNI") return "Graduate to Alumni";
   const sectionName = sectionsFor(row).find((item) => item.id === row.targetSectionId)?.name ?? "—";
   if (row.action === "RETAIN") return `Repeat ${row.repeatLabel || row.levelLabel} · Section ${sectionName}`;
-  if (row.action === "PROMOTE") return `Promote to ${row.promoteLabel ?? "the next class"} · Section ${sectionName}`;
-  return "No outcome selected";
+  if (row.action === "PROMOTE") return `Promote to ${row.promoteLabel ?? "Next Class"} · Section ${sectionName}`;
+  return "Review Required";
 }
 
 function destinationPlace(row: PromotionRow, year: string) {
-  if (row.action === "ALUMNI") return { label: "Alumni", detail: `Completes ${row.levelLabel} · ${year}`, tone: "bg-rose-50 text-rose-700" };
+  if (row.action === "ALUMNI") return { label: "Alumni", detail: `Graduates from ${row.levelLabel} · ${year}`, tone: "bg-purple-50 text-purple-700 border border-purple-200" };
   const sectionName = sectionsFor(row).find((item) => item.id === row.targetSectionId)?.name ?? "—";
-  if (row.action === "RETAIN") return { label: row.repeatLabel || row.levelLabel, detail: `Section ${sectionName} · ${year}`, tone: "bg-amber-50 text-amber-800" };
-  if (row.action === "PROMOTE") return { label: row.promoteLabel ?? "Next class", detail: `Section ${sectionName} · ${year}`, tone: "bg-emerald-50 text-emerald-800" };
-  return { label: "—", detail: "No outcome", tone: "bg-slate-100 text-slate-600" };
-}
-
-function PromotionReviewTable({ rows, fromYear, toYear }: { rows: PromotionRow[]; fromYear: string; toYear: string }) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200">
-      <table className="w-full min-w-[760px] text-left text-sm">
-        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-          <tr>
-            {["#", "Student", "Class", "Section", "Year", "Going to"].map((heading) => <th key={heading} className="px-3 py-3 font-medium">{heading}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => {
-            const place = destinationPlace(row, row.action === "ALUMNI" ? fromYear : toYear);
-            return (
-              <tr key={row.enrollmentId} className="border-t border-slate-100">
-                <td className="px-3 py-3 text-slate-400">{index + 1}</td>
-                <td className="px-3 py-3">
-                  <p className="font-semibold text-slate-950">{row.name}</p>
-                  <p className="text-xs text-slate-500">{row.permanentId}</p>
-                </td>
-                <td className="px-3 py-3 font-medium text-slate-800">{row.levelLabel}</td>
-                <td className="px-3 py-3 text-slate-700">Section {row.section}</td>
-                <td className="px-3 py-3 text-slate-700">{fromYear}</td>
-                <td className="px-3 py-3">
-                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${place.tone}`}>{place.label}</span>
-                  <p className="mt-1 text-xs text-slate-500">{place.detail}</p>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  if (row.action === "RETAIN") return { label: `Repeat ${row.repeatLabel || row.levelLabel}`, detail: `Section ${sectionName} · ${year}`, tone: "bg-amber-50 text-amber-800 border border-amber-200" };
+  if (row.action === "PROMOTE") return { label: `Promote to ${row.promoteLabel ?? "Next Class"}`, detail: `Section ${sectionName} · ${year}`, tone: "bg-emerald-50 text-emerald-800 border border-emerald-200" };
+  return { label: "—", detail: "No outcome chosen", tone: "bg-slate-100 text-slate-600" };
 }
 
 function assignmentProblem(row: PromotionRow) {
@@ -164,78 +172,127 @@ function startsAfter(year: YearOption, other: YearOption) {
 }
 
 function initialYears(years: YearOption[]) {
-  const ordered = [...years].sort((left, right) => new Date(left.startDate).getTime() - new Date(right.startDate).getTime());
-  const current = years.find((year) => year.isCurrent) ?? ordered.at(-1);
-  if (!current) return { source: undefined, destination: undefined };
-  const later = ordered.find((year) => startsAfter(year, current));
-  if (later) return { source: current, destination: later };
-  const earlier = [...ordered].reverse().find((year) => startsAfter(current, year));
-  return earlier ? { source: earlier, destination: current } : { source: current, destination: undefined };
+  if (!years.length) return { source: undefined, destination: undefined };
+  // Prioritize active/current year, or the latest year
+  const current = years.find((year) => year.isCurrent) ?? years[0];
+  const ordered = [...years].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+  const destination = ordered.find((year) => startsAfter(year, current));
+  return { source: current, destination };
 }
 
 export function PromotionPage() {
   const [years, setYears] = useState<YearOption[]>([]);
+  const [schoolType, setSchoolType] = useState<SchoolType>("SECONDARY_ONLY");
+  const [schoolName, setSchoolName] = useState("");
+  const [stage, setStage] = useState<"ALL" | "PRIMARY" | "SECONDARY">("ALL");
+
   const [fromYearId, setFromYearId] = useState("");
   const [toYearId, setToYearId] = useState("");
   const [classId, setClassId] = useState("");
   const [sectionId, setSectionId] = useState("");
+
   const [payload, setPayload] = useState<SectionPayload | null>(null);
   const [rows, setRows] = useState<PromotionRow[]>([]);
   const [filter, setFilter] = useState<FilterKey>("ALL");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(15);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [reviewed, setReviewed] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [pending, setPending] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+
   const [bulkOutcome, setBulkOutcome] = useState<"" | PromotionRow["action"]>("");
   const [bulkSectionId, setBulkSectionId] = useState("");
   const requestRef = useRef(0);
 
+  // Load school options on mount
   useEffect(() => {
-    api<{ years: YearOption[] }>("/api/v1/promotion/options")
+    api<{ schoolName: string; schoolType: SchoolType; years: YearOption[] }>("/api/v1/promotion/options")
       .then((data) => {
+        setSchoolName(data.schoolName);
+        setSchoolType(data.schoolType);
         setYears(data.years);
+
         const { source, destination } = initialYears(data.years);
-        setFromYearId(source?.id ?? "");
-        setToYearId(destination?.id ?? "");
-        setClassId(source?.classes[0]?.id ?? "");
-        setSectionId(source?.classes[0]?.sections[0]?.id ?? "");
+        if (source) {
+          setFromYearId(source.id);
+          setToYearId(destination?.id ?? "");
+          const initialClass = source.classes[0];
+          setClassId(initialClass?.id ?? "");
+          setSectionId(initialClass?.sections[0]?.id ?? "");
+        }
       })
       .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not load academic years."));
   }, []);
 
+  const fromYear = years.find((year) => year.id === fromYearId);
+  const toYear = years.find((year) => year.id === toYearId);
+
+  // Filter available classes strictly based on School Type & Stage
+  const availableClasses = useMemo(() => {
+    const list = fromYear?.classes ?? [];
+    if (schoolType === "PRIMARY_ONLY") return list.filter((c) => c.level.startsWith("CLASS"));
+    if (schoolType === "SECONDARY_ONLY") return list.filter((c) => c.level.startsWith("FORM"));
+    if (stage === "PRIMARY") return list.filter((c) => c.level.startsWith("CLASS"));
+    if (stage === "SECONDARY") return list.filter((c) => c.level.startsWith("FORM"));
+    return list;
+  }, [fromYear, schoolType, stage]);
+
+  // Keep classId valid when availableClasses changes
+  useEffect(() => {
+    if (availableClasses.length > 0 && (!classId || !availableClasses.some((c) => c.id === classId))) {
+      const first = availableClasses[0];
+      setClassId(first.id);
+      setSectionId(first.sections[0]?.id ?? "");
+    }
+  }, [availableClasses, classId]);
+
+  const selectedClass = availableClasses.find((item) => item.id === classId);
+  const terminalClass = selectedClass?.label === "Class 8" || selectedClass?.label === "Form 4";
+  const laterYears = fromYear ? years.filter((year) => startsAfter(year, fromYear)) : [];
+  const destinationInvalid = Boolean(fromYear && toYear && !startsAfter(toYear, fromYear));
+  const destinationMissing = !terminalClass && (!toYearId || destinationInvalid);
+
+  // Load section students payload
   useEffect(() => {
     const request = ++requestRef.current;
-    const source = years.find((year) => year.id === fromYearId);
-    const selected = source?.classes.find((item) => item.sections.some((section) => section.id === sectionId));
-    const terminal = selected?.label === "Class 8" || selected?.label === "Form 4";
-    const destination = years.find((year) => year.id === toYearId);
-    const destinationReady = Boolean(toYearId && fromYearId !== toYearId && source && destination && startsAfter(destination, source));
-    if (!fromYearId || !sectionId || (!terminal && !destinationReady)) {
+    if (!fromYearId || !sectionId) {
       setPayload(null);
       setRows([]);
       setLoading(false);
       return;
     }
+
+    const destinationReady = Boolean(toYearId && fromYearId !== toYearId && fromYear && toYear && startsAfter(toYear, fromYear));
+    if (!terminalClass && !destinationReady) {
+      setPayload(null);
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
     const controller = new AbortController();
     setLoading(true);
     setError("");
     setPreviewOpen(false);
     setConfirmOpen(false);
-    setReviewed(false);
+
     api<SectionPayload>(`/api/v1/promotion/section?fromYearId=${fromYearId}&sectionId=${sectionId}${destinationReady ? `&toYearId=${toYearId}` : ""}`, { signal: controller.signal })
       .then((data) => {
         if (request !== requestRef.current) return;
         setPayload(data);
         setRows(data.rows.map((row) => {
           const action = defaultAction(row);
-          return { ...row, selected: !row.blocked && Boolean(action), action, targetSectionId: defaultSection(row, action) };
+          return {
+            ...row,
+            selected: !row.blocked && Boolean(action),
+            action,
+            targetSectionId: defaultSection(row, action),
+          };
         }));
         setPage(1);
       })
@@ -244,45 +301,37 @@ export function PromotionPage() {
         if (caught instanceof DOMException && caught.name === "AbortError") return;
         setPayload(null);
         setRows([]);
-        setError(caught instanceof Error ? caught.message : "Could not load students.");
+        setError(caught instanceof Error ? caught.message : "Could not load students for this section.");
       })
       .finally(() => {
         if (request === requestRef.current) setLoading(false);
       });
-    return () => controller.abort();
-  }, [fromYearId, toYearId, sectionId, reloadKey, years]);
 
-  const fromYear = years.find((year) => year.id === fromYearId);
-  const toYear = years.find((year) => year.id === toYearId);
-  const selectedClass = fromYear?.classes.find((item) => item.id === classId);
-  const terminalClass = selectedClass?.label === "Class 8" || selectedClass?.label === "Form 4";
-  const laterYears = fromYear ? years.filter((year) => startsAfter(year, fromYear)) : [];
-  const destinationInvalid = Boolean(fromYear && toYear && !startsAfter(toYear, fromYear));
-  const destinationMissing = !terminalClass && (!toYearId || destinationInvalid);
-  const destinationMessage = fromYear && laterYears.length === 0
-    ? `${fromYear.name} is the latest academic year. Create a later year before promotion.`
-    : fromYear
-      ? `Choose a destination year that starts after ${fromYear.name}.`
-      : "The destination academic year has not been created.";
+    return () => controller.abort();
+  }, [fromYearId, toYearId, sectionId, reloadKey, years, terminalClass]);
 
   function chooseYear(id: string) {
     const year = years.find((item) => item.id === id);
+    if (!year) return;
     setFromYearId(id);
     setToYearId((current) => {
       const destination = years.find((item) => item.id === current);
-      if (!year || !destination || !startsAfter(destination, year)) return "";
+      if (!destination || !startsAfter(destination, year)) {
+        const next = years.filter((y) => startsAfter(y, year)).sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0];
+        return next?.id ?? "";
+      }
       return current;
     });
-    setClassId(year?.classes[0]?.id ?? "");
-    setSectionId(year?.classes[0]?.sections[0]?.id ?? "");
+    setClassId(year.classes[0]?.id ?? "");
+    setSectionId(year.classes[0]?.sections[0]?.id ?? "");
     setQuery("");
   }
 
-  function update(id: string, patch: Partial<PromotionRow>) {
-    setReviewed(false);
-    setRows((current) => current.map((row) => row.enrollmentId === id ? { ...row, ...patch } : row));
+  function updateRow(id: string, patch: Partial<PromotionRow>) {
+    setRows((current) => current.map((row) => (row.enrollmentId === id ? { ...row, ...patch } : row)));
   }
 
+  // Filter and search
   const visible = rows.filter((row) => {
     const matchesFilter = filter === "ALL"
       || (filter === "REVIEW" && row.status === "REVIEW")
@@ -291,10 +340,12 @@ export function PromotionPage() {
     const needle = query.trim().toLowerCase();
     return matchesFilter && (!needle || `${row.name} ${row.permanentId}`.toLowerCase().includes(needle));
   });
+
   const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
   const safePage = Math.min(page, pageCount);
   const pageRows = visible.slice((safePage - 1) * pageSize, safePage * pageSize);
   const chosen = rows.filter((row) => row.selected && !assignmentProblem(row));
+
   const summary = useMemo(() => ({
     total: rows.length,
     promote: rows.filter((row) => row.action === "PROMOTE").length,
@@ -303,8 +354,10 @@ export function PromotionPage() {
     review: rows.filter((row) => row.status === "REVIEW").length,
     blocked: rows.filter((row) => row.blocked).length,
   }), [rows]);
+
   const problems = chosen.length === 0 || rows.some((row) => row.selected && assignmentProblem(row));
   const selectedRows = rows.filter((row) => row.selected);
+
   const sharedSections = selectedRows.reduce<SectionChoice[] | null>((list, row) => {
     const sections = sectionsFor(row);
     if (!sections.length) return [];
@@ -312,9 +365,45 @@ export function PromotionPage() {
     return list.filter((item) => sections.some((section) => section.id === item.id));
   }, null) ?? [];
 
+  // Bulk actions
+  function handlePromoteAllPassing() {
+    setRows((current) => current.map((row) => {
+      if (row.blocked || !canPromote(row)) return row;
+      return {
+        ...row,
+        selected: true,
+        action: "PROMOTE",
+        targetSectionId: defaultSection(row, "PROMOTE"),
+      };
+    }));
+  }
+
+  function handleRepeatAllFailing() {
+    setRows((current) => current.map((row) => {
+      if (row.blocked || row.status !== "FAIL") return row;
+      return {
+        ...row,
+        selected: true,
+        action: "RETAIN",
+        targetSectionId: defaultSection(row, "RETAIN"),
+      };
+    }));
+  }
+
+  function handleGraduateAllEligible() {
+    setRows((current) => current.map((row) => {
+      if (row.blocked || !canAlumni(row)) return row;
+      return {
+        ...row,
+        selected: true,
+        action: "ALUMNI",
+        targetSectionId: "",
+      };
+    }));
+  }
+
   function applyBulkOutcome() {
     if (!bulkOutcome) return;
-    setReviewed(false);
     setRows((current) => current.map((row) => {
       if (!row.selected || row.blocked) return row;
       if (bulkOutcome === "PROMOTE" && !canPromote(row)) return row;
@@ -326,7 +415,6 @@ export function PromotionPage() {
 
   function applyBulkSection() {
     if (!bulkSectionId) return;
-    setReviewed(false);
     setRows((current) => current.map((row) => {
       if (!row.selected || !sectionsFor(row).some((section) => section.id === bulkSectionId)) return row;
       return { ...row, targetSectionId: bulkSectionId };
@@ -344,19 +432,20 @@ export function PromotionPage() {
       row.section,
       percent(row.term2Average),
       statusLabel[row.status],
-      row.action ? destinationText(row) : "Review required",
+      row.action ? destinationText(row) : "Review Required",
       sectionsFor(row).find((section) => section.id === row.targetSectionId)?.name ?? "",
       row.blockReason || row.remarks,
     ].map((value) => `"${value.replace(/"/g, '""')}"`).join(","))];
+    const currentSectionName = selectedClass?.sections.find((s) => s.id === sectionId)?.name ?? "all";
     const url = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = "student-promotion.csv";
+    link.download = `promotion-${selectedClass?.label ?? "class"}-sec_${currentSectionName}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
 
-  async function confirm() {
+  async function confirmPromotion() {
     setError("");
     setPending(true);
     try {
@@ -376,7 +465,7 @@ export function PromotionPage() {
       const excluded = rows.length - chosen.length;
       setPreviewOpen(false);
       setConfirmOpen(false);
-      setMessage(`Promoted ${result.promoted}, repeated ${result.repeated}, alumni ${result.alumni}.${excluded ? ` ${excluded} students were left unchanged.` : ""}`);
+      setMessage(`Successfully processed promotion: ${result.promoted} promoted, ${result.repeated} repeating, ${result.alumni} graduated to alumni.${excluded ? ` (${excluded} students remained unchanged).` : ""}`);
       setReloadKey((current) => current + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Promotion failed.");
@@ -385,263 +474,710 @@ export function PromotionPage() {
     }
   }
 
-  const step = confirmOpen ? 4 : previewOpen ? 3 : payload ? 2 : 1;
-  const steps = ["Select Year & Section", "Review Students", "Preview Changes", "Confirm Promotion"];
-
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-600 text-white"><GraduationCap className="h-5 w-5" /></span>
-          <div>
-            <h2 className="text-2xl font-semibold text-slate-950">Student Promotion</h2>
-            <p className="mt-1 text-sm text-slate-500">Prepare students for the next academic year.</p>
-          </div>
-        </div>
-        <Link to="/school/promotion/history" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm">View Promotion History</Link>
-      </div>
-
-      <div className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-sm shadow-sm md:grid-cols-4">
-        {steps.map((label, index) => (
-          <div key={label} className={`flex items-center gap-2 rounded-xl px-3 py-2 ${step === index + 1 ? "bg-blue-50 text-blue-800" : "bg-slate-50 text-slate-500"}`}>
-            <span className={`grid h-6 w-6 place-items-center rounded-full text-xs font-semibold text-white ${step === index + 1 ? "bg-blue-600" : "bg-slate-300"}`}>{index + 1}</span>
-            {label}
-          </div>
-        ))}
-      </div>
-
-      <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4">
-        <label className="text-xs font-medium text-slate-500">Academic year (from)
-          <span className="relative mt-1 block">
-            <select className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-24 text-sm text-slate-900" value={fromYearId} onChange={(event) => chooseYear(event.target.value)}>
-              {years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}
-            </select>
-            {fromYear?.isCurrent ? <span className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">Current</span> : null}
-          </span>
-        </label>
-        <label className="text-xs font-medium text-slate-500">{terminalClass ? "Next year for students who repeat" : "Next academic year (to)"}
-          <span className="relative mt-1 block">
-            <select className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 pr-24 text-sm text-slate-900" value={toYearId} onChange={(event) => setToYearId(event.target.value)}>
-              <option value="">{laterYears.length ? "Choose a later year" : "Not created yet"}</option>
-              {laterYears.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}
-            </select>
-            {toYear ? <span className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">{toYear.isCurrent ? "Current" : "Upcoming"}</span> : null}
-          </span>
-          {terminalClass ? <span className="mt-1 block text-[11px] font-normal text-slate-400">Students at 50% or above become alumni this year. Students below 50% repeat {selectedClass?.label} in the year you choose.</span> : null}
-        </label>
-        <label className="text-xs font-medium text-slate-500">Class / Form
-          <select className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900" value={classId} onChange={(event) => {
-            const next = fromYear?.classes.find((item) => item.id === event.target.value);
-            setClassId(event.target.value);
-            setSectionId(next?.sections[0]?.id ?? "");
-            setQuery("");
-          }}>
-            {(fromYear?.classes ?? []).map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-        </label>
-        <label className="text-xs font-medium text-slate-500">Section
-          <select className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900" value={sectionId} onChange={(event) => { setSectionId(event.target.value); setQuery(""); }}>
-            {(selectedClass?.sections ?? []).map((section) => <option key={section.id} value={section.id}>Section {section.name}</option>)}
-          </select>
-        </label>
-      </div>
-
-      {destinationMissing || (terminalClass && laterYears.length === 0) || (payload && payload.blockers.length) ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-semibold">Prepare the Next Academic Year First</p>
-          <p className="mt-1">{destinationMissing || laterYears.length === 0 ? destinationMessage : payload?.blockers.join(" ")}</p>
-          <Link to="/school/academic-years" className="mt-2 inline-block font-medium text-blue-700">Open Academic Years</Link>
-        </div>
-      ) : null}
-
-      {loading ? <p className="flex items-center gap-2 text-sm text-blue-700"><Loader2 className="h-4 w-4 animate-spin" /> Loading students…</p> : null}
-      {payload ? <p className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-800">Showing students from {payload.scope.levelLabel} – Section {payload.scope.section} for {payload.scope.fromYear}. Students are automatically loaded.</p> : null}
-
-      {payload ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Metric label="Total Students" value={summary.total} detail={`${payload.scope.levelLabel} – Section ${payload.scope.section}`} tone="bg-blue-50 text-blue-800" />
-            <Metric label="To Be Promoted" value={summary.promote} detail={share(summary.promote, summary.total)} tone="bg-emerald-50 text-emerald-800" />
-            <Metric label="To Repeat" value={summary.repeat} detail={share(summary.repeat, summary.total)} tone="bg-amber-50 text-amber-800" />
-            <Metric label="To Alumni" value={summary.alumni} detail={share(summary.alumni, summary.total)} tone="bg-rose-50 text-rose-800" />
+    <div className="space-y-6 pb-16">
+      {/* 1. EXECUTIVE HEADER */}
+      <section className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:p-7">
+        <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wider text-blue-700 border border-blue-200">
+                <GraduationCap className="h-3.5 w-3.5 text-blue-600" /> Academic Transition Hub
+              </span>
+              {/* School Type Indicator Badge */}
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 border border-slate-200">
+                {schoolType === "PRIMARY_ONLY" ? "Primary School · Classes 1–8" :
+                 schoolType === "SECONDARY_ONLY" ? "Secondary School · Forms 1–4" :
+                 "Combined Primary & Secondary School"}
+              </span>
+            </div>
+            <h1 className="text-2xl font-black text-slate-900 sm:text-3xl">
+              Student Academic Promotion
+            </h1>
+            <p className="text-sm text-slate-500 max-w-2xl">
+              Advance passing students to the next level, assign repeat sections for students needing retention, and graduate completion classes to Alumni based on Term 2 examination performance.
+            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {([
-              ["ALL", `All Students (${summary.total})`],
-              ["PROMOTE", `To Promote (${summary.promote})`],
-              ["RETAIN", `To Repeat (${summary.repeat})`],
-              ["ALUMNI", `To Alumni (${summary.alumni})`],
-              ["REVIEW", `Review Required (${summary.review})`],
-              ["BLOCKED", `Blocked (${summary.blocked})`],
-            ] as Array<[FilterKey, string]>).map(([key, label]) => (
-              <button key={key} type="button" className={`rounded-full px-3 py-1.5 text-sm ${filter === key ? "bg-blue-600 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200"}`} onClick={() => { setFilter(key); setPage(1); }}>{label}</button>
+            <Link
+              to="/school/promotion/history"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm"
+            >
+              <Clock className="h-4 w-4 text-slate-500" /> Promotion History
+            </Link>
+            <Link
+              to="/school/alumni"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-purple-50 px-4 py-2.5 text-xs font-bold text-purple-700 border border-purple-200 hover:bg-purple-100 shadow-sm"
+            >
+              <Award className="h-4 w-4 text-purple-600" /> Alumni Directory
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* FEEDBACK BANNERS */}
+      {message && (
+        <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-900 shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+            <p className="text-sm font-semibold">{message}</p>
+          </div>
+          <button type="button" onClick={() => setMessage("")} className="text-emerald-700 hover:text-emerald-950 p-1"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+      {error && (
+        <div className="flex items-center justify-between rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-rose-900 shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
+            <p className="text-sm font-semibold">{error}</p>
+          </div>
+          <button type="button" onClick={() => setError("")} className="text-rose-700 hover:text-rose-950 p-1"><X className="h-4 w-4" /></button>
+        </div>
+      )}
+
+      {/* 2. COMBINED SCHOOL STAGE TABS (If PRIMARY_AND_SECONDARY) */}
+      {schoolType === "PRIMARY_AND_SECONDARY" && (
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 mr-1">School Stage:</span>
+          <button
+            type="button"
+            onClick={() => setStage("ALL")}
+            className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+              stage === "ALL" ? "bg-slate-900 text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            All Classes
+          </button>
+          <button
+            type="button"
+            onClick={() => setStage("PRIMARY")}
+            className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+              stage === "PRIMARY" ? "bg-blue-600 text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            Primary Stage (Classes 1–8)
+          </button>
+          <button
+            type="button"
+            onClick={() => setStage("SECONDARY")}
+            className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+              stage === "SECONDARY" ? "bg-indigo-600 text-white shadow-sm" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+            }`}
+          >
+            Secondary Stage (Forms 1–4)
+          </button>
+        </div>
+      )}
+
+      {/* 3. PROMOTION SETUP CONTROLS */}
+      <div className="grid gap-3.5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:grid-cols-2 lg:grid-cols-4 lg:items-end">
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          1. Current Academic Year
+          <span className="relative mt-1.5 block">
+            <select
+              className={`${inputCls} w-full font-semibold pr-20`}
+              value={fromYearId}
+              onChange={(e) => chooseYear(e.target.value)}
+            >
+              {years.map((year) => (
+                <option key={year.id} value={year.id}>
+                  {year.name} {year.isCurrent ? "★ Active" : ""}
+                </option>
+              ))}
+            </select>
+            {fromYear?.isCurrent && (
+              <span className="pointer-events-none absolute right-8 top-1/2 -translate-y-1/2 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                Active
+              </span>
+            )}
+          </span>
+        </label>
+
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          2. Class / Form
+          <select
+            className={`${inputCls} mt-1.5 w-full font-semibold`}
+            value={classId}
+            onChange={(e) => {
+              setClassId(e.target.value);
+              const nextClass = availableClasses.find((item) => item.id === e.target.value);
+              setSectionId(nextClass?.sections[0]?.id ?? "");
+              setQuery("");
+            }}
+          >
+            {schoolType === "PRIMARY_AND_SECONDARY" && stage === "ALL" ? (
+              <>
+                <optgroup label="Primary Stage (Classes 1–8)">
+                  {availableClasses.filter((c) => c.level.startsWith("CLASS")).map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Secondary Stage (Forms 1–4)">
+                  {availableClasses.filter((c) => c.level.startsWith("FORM")).map((item) => (
+                    <option key={item.id} value={item.id}>{item.label}</option>
+                  ))}
+                </optgroup>
+              </>
+            ) : (
+              availableClasses.map((item) => (
+                <option key={item.id} value={item.id}>{item.label}</option>
+              ))
+            )}
+            {!availableClasses.length && <option value="">No classes in selected stage</option>}
+          </select>
+        </label>
+
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          3. Section
+          <select
+            className={`${inputCls} mt-1.5 w-full font-semibold`}
+            value={sectionId}
+            onChange={(e) => {
+              setSectionId(e.target.value);
+              setQuery("");
+            }}
+          >
+            {(selectedClass?.sections ?? []).map((section) => (
+              <option key={section.id} value={section.id}>Section {section.name}</option>
             ))}
-            <input className="ml-auto w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm sm:w-56" placeholder="Search by name or ID" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
+            {!selectedClass?.sections.length && <option value="">No section</option>}
+          </select>
+        </label>
+
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+          4. Next Academic Year
+          <select
+            className={`${inputCls} mt-1.5 w-full font-semibold`}
+            value={toYearId}
+            onChange={(e) => setToYearId(e.target.value)}
+          >
+            <option value="">
+              {terminalClass ? "Not needed for Alumni graduation" : laterYears.length ? "Choose Destination Year" : "No upcoming year created"}
+            </option>
+            {laterYears.map((year) => (
+              <option key={year.id} value={year.id}>
+                {year.name} {year.isCurrent ? "(Current)" : "(Upcoming)"}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {/* VALIDATION & BLOCKER ADVICE */}
+      {destinationMissing && !terminalClass && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold">Upcoming Academic Year Required</p>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              {laterYears.length === 0
+                ? `"${fromYear?.name}" is currently the latest year in the system. To advance students to the next class, please create the upcoming academic year first.`
+                : "Please select the destination academic year in dropdown #4 above to load available sections."}
+            </p>
+            <Link to="/school/academic-years" className="inline-flex items-center gap-1 text-xs font-bold text-blue-700 hover:underline pt-1">
+              Configure Academic Years <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {payload && payload.blockers.length > 0 && (
+        <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">
+          <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-bold">Promotion Prerequisites Not Met</p>
+            <ul className="list-disc list-inside text-xs text-rose-800 space-y-0.5">
+              {payload.blockers.map((b, idx) => <li key={idx}>{b}</li>)}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {loading && (
+        <div className="grid place-items-center py-16">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <p className="text-xs font-bold text-slate-600">Loading student enrollment and Term 2 examination data...</p>
+          </div>
+        </div>
+      )}
+
+      {!loading && payload && (
+        <>
+          {/* 4. EXECUTIVE METRIC KPI CARDS */}
+          <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+            <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Total Enrolled</span>
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-slate-100 text-slate-700"><Users className="h-4 w-4" /></span>
+              </div>
+              <p className="mt-2 text-3xl font-black text-slate-900">{summary.total}</p>
+              <p className="text-xs text-slate-400 mt-1">{payload.scope.levelLabel} · Section {payload.scope.section}</p>
+            </article>
+
+            <article className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">To Be Promoted</span>
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-100 text-emerald-800"><Check className="h-4 w-4" /></span>
+              </div>
+              <p className="mt-2 text-3xl font-black text-emerald-950">{summary.promote}</p>
+              <p className="text-xs text-emerald-700 font-semibold mt-1">{share(summary.promote, summary.total)}</p>
+            </article>
+
+            <article className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-800">To Repeat (Retain)</span>
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-amber-100 text-amber-800"><RotateCcw className="h-4 w-4" /></span>
+              </div>
+              <p className="mt-2 text-3xl font-black text-amber-950">{summary.repeat}</p>
+              <p className="text-xs text-amber-700 font-semibold mt-1">{share(summary.repeat, summary.total)}</p>
+            </article>
+
+            <article className="rounded-2xl border border-purple-100 bg-purple-50/70 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-800">Alumni Graduation</span>
+                <span className="grid h-8 w-8 place-items-center rounded-xl bg-purple-100 text-purple-800"><GraduationCap className="h-4 w-4" /></span>
+              </div>
+              <p className="mt-2 text-3xl font-black text-purple-950">{summary.alumni}</p>
+              <p className="text-xs text-purple-700 font-semibold mt-1">{share(summary.alumni, summary.total)}</p>
+            </article>
           </div>
 
-          {selectedRows.length ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-              <span className="font-medium">{selectedRows.length} selected</span>
-              <select className="rounded-lg border border-blue-200 bg-white px-2 py-1" value="" onChange={(event) => setBulkOutcome(event.target.value as PromotionRow["action"])}>
-                <option value="">Set outcome</option>
-                <option value="PROMOTE">Promote</option>
-                <option value="RETAIN">Repeat</option>
-                <option value="ALUMNI">Alumni</option>
-              </select>
-              <select className="rounded-lg border border-blue-200 bg-white px-2 py-1" value={bulkSectionId} onChange={(event) => setBulkSectionId(event.target.value)} disabled={!sharedSections.length}>
-                <option value="">{sharedSections.length ? "Assign destination section" : "No shared section"}</option>
-                {sharedSections.map((section) => <option key={section.id} value={section.id}>Section {section.name}</option>)}
-              </select>
-              <button type="button" className="rounded-lg bg-white px-2 py-1 ring-1 ring-blue-200" onClick={() => { setReviewed(false); setRows((current) => current.map((row) => ({ ...row, selected: false }))); }}>Clear selection</button>
-            </div>
-          ) : null}
-          {bulkOutcome ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              <span>Apply this outcome only to the selected students who are allowed to take it?</span>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1 font-medium text-white" onClick={applyBulkOutcome}>Apply</button>
-              <button type="button" className="rounded-lg bg-white px-3 py-1 ring-1 ring-amber-200" onClick={() => setBulkOutcome("")}>Cancel</button>
-            </div>
-          ) : null}
-          {bulkSectionId ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              <span>Assign this section only to selected students whose destination class contains it?</span>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1 font-medium text-white" onClick={applyBulkSection}>Apply</button>
-              <button type="button" className="rounded-lg bg-white px-3 py-1 ring-1 ring-amber-200" onClick={() => setBulkSectionId("")}>Cancel</button>
-            </div>
-          ) : null}
+          {/* 5. INTERACTIVE FILTER TABS & BULK ACTION TOOLBAR */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {([
+                  ["ALL", `All Students (${summary.total})`],
+                  ["PROMOTE", `To Promote (${summary.promote})`],
+                  ["RETAIN", `To Repeat (${summary.repeat})`],
+                  ["ALUMNI", `To Alumni (${summary.alumni})`],
+                  ["REVIEW", `Review Required (${summary.review})`],
+                  ["BLOCKED", `Blocked (${summary.blocked})`],
+                ] as Array<[FilterKey, string]>).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => { setFilter(key); setPage(1); }}
+                    className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${
+                      filter === key
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full min-w-[1100px] text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-3"><input type="checkbox" checked={pageRows.some((row) => !row.blocked && row.action) && pageRows.filter((row) => !row.blocked && row.action).every((row) => row.selected)} onChange={(event) => {
-                    const ids = new Set(pageRows.filter((row) => !row.blocked && row.action).map((row) => row.enrollmentId));
-                    setReviewed(false);
-                    setRows((current) => current.map((row) => ids.has(row.enrollmentId) ? { ...row, selected: event.target.checked } : row));
-                  }} /></th>
-                  {["#", "Student ID", "Student Name", "Gender", "Current Class", "Section", "Term 2 Average", "Result Status", "Next Class / Action", "Next Section", "Remarks"].map((heading) => <th key={heading} className="px-3 py-3 font-medium">{heading}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((row, index) => {
-                  const sections = sectionsFor(row);
-                  return (
-                    <tr key={row.enrollmentId} className="border-t border-slate-100">
-                      <td className="px-3 py-3"><input type="checkbox" checked={row.selected} disabled={row.blocked || !row.action} onChange={(event) => update(row.enrollmentId, { selected: event.target.checked })} /></td>
-                      <td className="px-3 py-3 text-slate-400">{(safePage - 1) * pageSize + index + 1}</td>
-                      <td className="px-3 py-3 text-slate-500">{row.permanentId}</td>
-                      <td className="px-3 py-3 font-medium text-slate-900"><Link className="text-blue-700 hover:underline" to={`/school/students/${row.studentId}`}>{row.name}</Link></td>
-                      <td className="px-3 py-3">{row.gender}</td>
-                      <td className="px-3 py-3">{row.levelLabel}</td>
-                      <td className="px-3 py-3">{row.section}</td>
-                      <td className="px-3 py-3 font-semibold text-blue-700">{percent(row.term2Average)}</td>
-                      <td className="px-3 py-3"><span className={`rounded-full px-2 py-1 text-xs font-medium ${statusClass[row.status]}`}>{statusLabel[row.status]}</span></td>
-                      <td className="px-3 py-3">
-                        <select className="max-w-[180px] rounded-lg border border-slate-200 px-2 py-1" value={row.action} disabled={row.blocked} onChange={(event) => {
-                          const action = event.target.value as PromotionRow["action"];
-                          update(row.enrollmentId, { action, targetSectionId: defaultSection(row, action), selected: Boolean(action) });
-                        }}>
-                          <option value="">Review required</option>
-                          {canPromote(row) ? <option value="PROMOTE">Promote to {row.promoteLabel}</option> : null}
-                          {!row.blocked ? <option value="RETAIN">Repeat {row.repeatLabel || row.levelLabel}</option> : null}
-                          {canAlumni(row) ? <option value="ALUMNI">Alumni</option> : null}
-                        </select>
-                      </td>
-                      <td className="px-3 py-3">
-                        {row.action === "ALUMNI" || !row.action ? "—" : sections.length ? (
-                          <select className="rounded-lg border border-slate-200 px-2 py-1" value={row.targetSectionId} onChange={(event) => update(row.enrollmentId, { targetSectionId: event.target.value })}>
-                            {sections.map((section) => <option key={section.id} value={section.id}>Section {section.name}</option>)}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search student or ID..."
+                  value={query}
+                  onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+                  className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-500 shadow-sm"
+                />
+              </div>
+            </div>
+
+            {/* QUICK 1-CLICK BULK ACTIONS */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mr-1">Quick Actions:</span>
+                <button
+                  type="button"
+                  onClick={handlePromoteAllPassing}
+                  className="inline-flex items-center gap-1 rounded-xl bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 border border-emerald-200 hover:bg-emerald-100 transition-colors shadow-sm"
+                >
+                  <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> Promote All Passing (≥50%)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRepeatAllFailing}
+                  className="inline-flex items-center gap-1 rounded-xl bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors shadow-sm"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 text-amber-600" /> Repeat All Failing (&lt;50%)
+                </button>
+                {terminalClass && (
+                  <button
+                    type="button"
+                    onClick={handleGraduateAllEligible}
+                    className="inline-flex items-center gap-1 rounded-xl bg-purple-50 px-3 py-1.5 text-xs font-bold text-purple-800 border border-purple-200 hover:bg-purple-100 transition-colors shadow-sm"
+                  >
+                    <GraduationCap className="h-3.5 w-3.5 text-purple-600" /> Graduate All Eligible
+                  </button>
+                )}
+              </div>
+
+              {selectedRows.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
+                    {selectedRows.length} Selected
+                  </span>
+                  <select
+                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700"
+                    value={bulkSectionId}
+                    onChange={(e) => setBulkSectionId(e.target.value)}
+                    disabled={!sharedSections.length}
+                  >
+                    <option value="">{sharedSections.length ? "Mass-Assign Section" : "No shared section"}</option>
+                    {sharedSections.map((s) => (
+                      <option key={s.id} value={s.id}>Assign Section {s.name}</option>
+                    ))}
+                  </select>
+                  {bulkSectionId && (
+                    <button
+                      type="button"
+                      onClick={applyBulkSection}
+                      className="rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-blue-500"
+                    >
+                      Apply
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setRows((cur) => cur.map((r) => ({ ...r, selected: false })))}
+                    className="text-xs font-semibold text-slate-500 hover:text-slate-800 p-1"
+                  >
+                    Deselect
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 6. UPGRADED STUDENT PROMOTION TABLE */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3.5 w-10">
+                      <input
+                        type="checkbox"
+                        checked={pageRows.length > 0 && pageRows.every((r) => r.selected)}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          const ids = new Set(pageRows.map((r) => r.enrollmentId));
+                          setRows((cur) => cur.map((r) => (ids.has(r.enrollmentId) && !r.blocked ? { ...r, selected: checked } : r)));
+                        }}
+                        className="h-4 w-4 rounded accent-blue-600"
+                      />
+                    </th>
+                    <th className="px-3 py-3.5 w-12">#</th>
+                    <th className="px-4 py-3.5 min-w-[200px]">Student Details</th>
+                    <th className="px-3 py-3.5">Gender</th>
+                    <th className="px-3 py-3.5">Current Class</th>
+                    <th className="px-3 py-3.5 text-center">Term 2 Average</th>
+                    <th className="px-4 py-3.5 text-center">Result Status</th>
+                    <th className="px-4 py-3.5 min-w-[220px]">Promotion Decision (Admin)</th>
+                    <th className="px-3 py-3.5 min-w-[130px]">Target Section</th>
+                    <th className="px-4 py-3.5 min-w-[180px]">Remarks / Note</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {pageRows.map((row, index) => {
+                    const sections = sectionsFor(row);
+                    const isPassing = row.term2Average != null && row.term2Average >= 50;
+
+                    return (
+                      <tr key={row.enrollmentId} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-4 py-3.5">
+                          <input
+                            type="checkbox"
+                            checked={row.selected}
+                            disabled={row.blocked || !row.action}
+                            onChange={(e) => updateRow(row.enrollmentId, { selected: e.target.checked })}
+                            className="h-4 w-4 rounded accent-blue-600"
+                          />
+                        </td>
+                        <td className="px-3 py-3.5 text-xs font-bold text-slate-400">
+                          {(safePage - 1) * pageSize + index + 1}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <span className="grid h-8 w-8 place-items-center rounded-xl bg-slate-100 text-xs font-bold text-slate-700">
+                              {row.name.slice(0, 2).toUpperCase()}
+                            </span>
+                            <div>
+                              <Link to={`/school/students/${row.studentId}`} className="font-bold text-slate-900 hover:text-blue-600 hover:underline">
+                                {row.name}
+                              </Link>
+                              <p className="text-[11px] font-mono text-slate-500">ID: {row.permanentId}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-3 py-3.5 text-xs font-semibold text-slate-600">
+                          {row.gender}
+                        </td>
+                        <td className="px-3 py-3.5 text-xs font-semibold text-slate-700">
+                          {row.levelLabel} · Sec {row.section}
+                        </td>
+                        <td className="px-3 py-3.5 text-center">
+                          {row.term2Average != null ? (
+                            <span className={`inline-block font-extrabold text-sm ${isPassing ? "text-emerald-700" : "text-rose-600"}`}>
+                              {percent(row.term2Average)}
+                            </span>
+                          ) : (
+                            <span className="text-xs italic text-slate-400">No marks</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3.5 text-center">
+                          {statusBadge(row.status)}
+                        </td>
+
+                        {/* DECISION SELECTOR (ADMIN AUTHORITY) */}
+                        <td className="px-4 py-3.5">
+                          <select
+                            disabled={row.blocked}
+                            value={row.action}
+                            onChange={(e) => {
+                              const action = e.target.value as PromotionRow["action"];
+                              updateRow(row.enrollmentId, {
+                                action,
+                                targetSectionId: defaultSection(row, action),
+                                selected: Boolean(action),
+                              });
+                            }}
+                            className={`w-full rounded-xl border px-3 py-1.5 text-xs font-bold transition-all ${
+                              row.action === "PROMOTE" ? "border-emerald-300 bg-emerald-50 text-emerald-800" :
+                              row.action === "RETAIN" ? "border-amber-300 bg-amber-50 text-amber-800" :
+                              row.action === "ALUMNI" ? "border-purple-300 bg-purple-50 text-purple-800" :
+                              "border-slate-200 bg-white text-slate-700"
+                            }`}
+                          >
+                            <option value="">Choose Outcome</option>
+                            {canPromote(row) && (
+                              <option value="PROMOTE">Promote to {row.promoteLabel}</option>
+                            )}
+                            {!row.blocked && (
+                              <option value="RETAIN">Repeat {row.repeatLabel || row.levelLabel}</option>
+                            )}
+                            {canAlumni(row) && (
+                              <option value="ALUMNI">Graduate to Alumni</option>
+                            )}
                           </select>
-                        ) : "Not configured"}
+                        </td>
+
+                        {/* TARGET SECTION SELECTOR */}
+                        <td className="px-3 py-3.5">
+                          {row.action === "ALUMNI" ? (
+                            <span className="text-xs font-semibold text-purple-600">Alumni (N/A)</span>
+                          ) : !row.action ? (
+                            <span className="text-xs text-slate-400">—</span>
+                          ) : sections.length > 0 ? (
+                            <select
+                              value={row.targetSectionId}
+                              onChange={(e) => updateRow(row.enrollmentId, { targetSectionId: e.target.value })}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800"
+                            >
+                              {sections.map((s) => (
+                                <option key={s.id} value={s.id}>Section {s.name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-amber-700 font-semibold">No section in next year</span>
+                          )}
+                        </td>
+
+                        {/* REMARKS */}
+                        <td className="px-4 py-3.5 text-xs text-slate-500">
+                          {row.blocked ? (
+                            <span className="text-rose-600 font-semibold">{row.blockReason}</span>
+                          ) : row.status === "PASS" ? (
+                            <span className="text-emerald-700 font-medium">Eligible based on Term 2 score</span>
+                          ) : (
+                            <span>{row.remarks || "—"}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {!visible.length && (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-12 text-center text-slate-500">
+                        {rows.length === 0 ? "No students are enrolled in this section." : "No students match the selected filter."}
                       </td>
-                      <td className="px-3 py-3 text-slate-500">{row.blocked ? row.blockReason : row.status === "PASS" ? "—" : row.remarks}</td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {!visible.length ? <p className="px-4 py-8 text-center text-sm text-slate-500">{rows.length ? "No students in this view." : "No students are enrolled in this section."}</p> : null}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-3 py-3 text-sm text-slate-500">
-              <span>{visible.length ? `Showing ${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, visible.length)} of ${visible.length}` : "Showing 0 students"}</span>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* PAGINATION BAR */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+              <span>
+                {visible.length > 0
+                  ? `Showing ${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, visible.length)} of ${visible.length} students`
+                  : "Showing 0 students"}
+              </span>
               <div className="flex items-center gap-2">
-                <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-40" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>Previous</button>
-                <span>{safePage} / {pageCount}</span>
-                <button type="button" className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-40" disabled={safePage >= pageCount} onClick={() => setPage(safePage + 1)}>Next</button>
-                <select className="rounded-lg border border-slate-200 px-2 py-1" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}>
-                  {[10, 25, 50].map((size) => <option key={size} value={size}>{size} / page</option>)}
+                <button
+                  type="button"
+                  disabled={safePage <= 1}
+                  onClick={() => setPage(safePage - 1)}
+                  className="rounded-lg border border-slate-200 px-3 py-1 font-semibold disabled:opacity-40 hover:bg-slate-50"
+                >
+                  Previous
+                </button>
+                <span className="font-bold text-slate-700">{safePage} / {pageCount}</span>
+                <button
+                  type="button"
+                  disabled={safePage >= pageCount}
+                  onClick={() => setPage(safePage + 1)}
+                  className="rounded-lg border border-slate-200 px-3 py-1 font-semibold disabled:opacity-40 hover:bg-slate-50"
+                >
+                  Next
+                </button>
+                <select
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-700"
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                >
+                  {[10, 15, 25, 50].map((s) => <option key={s} value={s}>{s} / page</option>)}
                 </select>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap justify-end gap-2">
-            <button type="button" className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50" disabled={!visible.length} onClick={exportList}>Export List</button>
-            <button type="button" className="rounded-xl border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700 disabled:opacity-50" disabled={problems || pending || loading} onClick={() => { setPreviewOpen(true); setReviewed(true); }}>Preview Changes</button>
-            <button type="button" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={!reviewed || problems || pending || loading} onClick={() => setConfirmOpen(true)}>Confirm Promotion</button>
+          {/* 7. BOTTOM ACTION EXECUTION BAR */}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="text-xs text-slate-600">
+              <strong className="text-slate-900">{chosen.length}</strong> students ready for execution.
+              {rows.length - chosen.length > 0 && (
+                <span className="text-slate-400 ml-1">({rows.length - chosen.length} students remain in current class)</span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                disabled={!visible.length}
+                onClick={exportList}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 shadow-sm"
+              >
+                <Download className="h-3.5 w-3.5" /> Export Promotion List
+              </button>
+              <button
+                type="button"
+                disabled={problems || pending || loading || !chosen.length}
+                onClick={() => setConfirmOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-blue-500 shadow-md shadow-blue-600/25 disabled:opacity-50 transition-all"
+              >
+                <CheckCheck className="h-4 w-4" /> Review & Execute Promotion ({chosen.length})
+              </button>
+            </div>
           </div>
         </>
-      ) : null}
+      )}
 
-      {previewOpen && payload ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-          <section className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-950">Preview changes</h3>
-            <p className="mt-1 text-sm text-slate-500">{payload.scope.schoolName} · {payload.scope.levelLabel} Section {payload.scope.section} · {payload.scope.fromYear} → {payload.scope.toYear}</p>
-            <p className="mt-3 text-sm text-slate-600">{chosen.length} {chosen.length === 1 ? "student" : "students"} selected. Nothing is saved until you confirm.</p>
-            <div className="mt-4 overflow-x-auto">
-              <PromotionReviewTable rows={chosen} fromYear={payload.scope.fromYear} toYear={payload.scope.toYear} />
-            </div>
-            {rows.length - chosen.length > 0 ? <p className="mt-4 text-sm text-slate-500">{rows.length - chosen.length} {rows.length - chosen.length === 1 ? "student stays" : "students stay"} in {payload.scope.levelLabel} Section {payload.scope.section}. They are not part of this confirmation.</p> : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setPreviewOpen(false)}>Back to Review</button>
-              <button type="button" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => { setPreviewOpen(false); setConfirmOpen(true); }}>Confirm Promotion</button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {confirmOpen && payload ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-          <section className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl">
+      {/* CONFIRMATION EXECUTION MODAL */}
+      {confirmOpen && payload && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm animate-in fade-in">
+          <section className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200">
             <header className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
               <div className="flex items-start gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-600 text-white"><Users className="h-5 w-5" /></span>
+                <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-700 border border-blue-200">
+                  <GraduationCap className="h-6 w-6 text-blue-600" />
+                </span>
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-950">Confirm promotion</h3>
-                  <p className="mt-1 text-sm text-slate-500">{payload.scope.schoolName} · {payload.scope.levelLabel} · Section {payload.scope.section} · {payload.scope.fromYear}</p>
+                  <h3 className="text-lg font-extrabold text-slate-900">Execute Academic Promotion</h3>
+                  <p className="text-xs text-slate-500">
+                    {payload.scope.schoolName} · {payload.scope.levelLabel} Section {payload.scope.section} ({payload.scope.fromYear} → {toYear?.name ?? "Alumni"})
+                  </p>
                 </div>
               </div>
-              <button type="button" className="rounded-lg px-2 py-1 text-sm text-slate-500 hover:bg-slate-100" onClick={() => setConfirmOpen(false)}>Close</button>
+              <button
+                type="button"
+                onClick={() => setConfirmOpen(false)}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </header>
-            <div className="overflow-y-auto px-6 py-5">
-              <p className="text-sm text-slate-600">{chosen.length} {chosen.length === 1 ? "student" : "students"} will be saved. Nothing changes until you confirm.</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <article className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3"><p className="text-xs font-medium text-emerald-700">Promote</p><p className="mt-1 text-2xl font-semibold text-emerald-950">{chosen.filter((row) => row.action === "PROMOTE").length}</p></article>
-                <article className="rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3"><p className="text-xs font-medium text-amber-700">Repeat</p><p className="mt-1 text-2xl font-semibold text-amber-950">{chosen.filter((row) => row.action === "RETAIN").length}</p></article>
-                <article className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3"><p className="text-xs font-medium text-rose-700">Alumni</p><p className="mt-1 text-2xl font-semibold text-rose-950">{chosen.filter((row) => row.action === "ALUMNI").length}</p></article>
+
+            <div className="overflow-y-auto px-6 py-5 space-y-4">
+              <p className="text-sm text-slate-600 leading-relaxed">
+                You are about to advance <strong>{chosen.length} students</strong>. Their new enrollments will be created in the selected destination sections, and completion records will be archived in Promotion History.
+              </p>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                  <p className="text-xs font-bold uppercase text-emerald-800">Advancing / Promoted</p>
+                  <p className="text-2xl font-black text-emerald-950 mt-1">{chosen.filter((r) => r.action === "PROMOTE").length}</p>
+                </div>
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                  <p className="text-xs font-bold uppercase text-amber-800">Repeating Class</p>
+                  <p className="text-2xl font-black text-amber-950 mt-1">{chosen.filter((r) => r.action === "RETAIN").length}</p>
+                </div>
+                <div className="rounded-2xl border border-purple-100 bg-purple-50 p-4">
+                  <p className="text-xs font-bold uppercase text-purple-800">Graduating to Alumni</p>
+                  <p className="text-2xl font-black text-purple-950 mt-1">{chosen.filter((r) => r.action === "ALUMNI").length}</p>
+                </div>
               </div>
-              <div className="mt-4 overflow-x-auto">
-                <PromotionReviewTable rows={chosen} fromYear={payload.scope.fromYear} toYear={payload.scope.toYear} />
+
+              <div className="overflow-hidden rounded-2xl border border-slate-200">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 uppercase tracking-wider text-slate-500 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2.5">#</th>
+                      <th className="px-3 py-2.5">Student</th>
+                      <th className="px-3 py-2.5">Current Class</th>
+                      <th className="px-3 py-2.5">Outcome Action</th>
+                      <th className="px-3 py-2.5">Destination</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {chosen.map((r, i) => {
+                      const place = destinationPlace(r, toYear?.name ?? fromYear?.name ?? "Year");
+                      return (
+                        <tr key={r.enrollmentId} className="hover:bg-slate-50/50">
+                          <td className="px-3 py-2 text-slate-400 font-bold">{i + 1}</td>
+                          <td className="px-3 py-2 font-bold text-slate-900">{r.name}</td>
+                          <td className="px-3 py-2 text-slate-600">{r.levelLabel} · Sec {r.section}</td>
+                          <td className="px-3 py-2">
+                            <span className={`rounded-full px-2 py-0.5 font-bold ${place.tone}`}>{place.label}</span>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{place.detail}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              {rows.length - chosen.length > 0 ? <p className="mt-4 text-sm text-slate-500">{rows.length - chosen.length} {rows.length - chosen.length === 1 ? "student stays" : "students stay"} in {payload.scope.levelLabel} Section {payload.scope.section}. They are not part of this confirmation.</p> : null}
             </div>
-            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4">
-              <p className="text-xs text-slate-500">Please review the class, section, year, and destination before confirming.</p>
+
+            <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-6 py-4 bg-slate-50">
+              <p className="text-xs text-slate-500">Review carefully. This writes permanent promotion decisions to the database.</p>
               <div className="flex gap-2">
-                <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700" onClick={() => setConfirmOpen(false)}>Cancel</button>
-                <button type="button" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={pending || !chosen.length} onClick={confirm}>{pending ? "Saving…" : "Confirm Promotion"}</button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmOpen(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !chosen.length}
+                  onClick={() => void confirmPromotion()}
+                  className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-sm font-bold text-white hover:bg-blue-500 shadow-md shadow-blue-600/25 disabled:opacity-50"
+                >
+                  {pending ? "Executing Promotion..." : "Confirm & Execute Promotion"}
+                </button>
               </div>
             </footer>
           </section>
         </div>
-      ) : null}
-
-      {message ? <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-700">{message}</p> : null}
-      {error ? <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+      )}
     </div>
   );
 }
+
 
 function Metric({ label, value, detail, tone }: { label: string; value: number; detail: string; tone: string }) {
   return (
