@@ -233,6 +233,7 @@ export function Shell({
         : user.role === "PARENT"
           ? [
               { to: "/parent/dashboard", label: "My children", icon: "children" },
+              { to: "/parent/attendance", label: "Attendance", icon: "attendance" },
               { to: "/parent/fees", label: "Fees", icon: "finance" },
               { to: "/parent/announcements", label: "Announcements", icon: "announcements" },
             ]

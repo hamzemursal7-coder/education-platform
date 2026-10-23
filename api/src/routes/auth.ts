@@ -25,7 +25,10 @@ const setPasswordSchema = z.object({
 });
 
 async function openInvite(token: string) {
-  const invite = await prisma.inviteToken.findUnique({ where: { tokenHash: hashRefreshToken(token.trim()) } });
+  const invite = await prisma.inviteToken.findUnique({
+    where: { tokenHash: hashRefreshToken(token.trim()) },
+    include: { user: { select: { role: true } } },
+  });
   if (!invite || invite.usedAt || invite.expiresAt.getTime() < Date.now()) return null;
   return invite;
 }
@@ -43,7 +46,7 @@ authRouter.post("/set-password/check", async (req, res, next) => {
       throw new HttpError(400, "This link is no longer valid.");
     }
     if (!invite) throw new HttpError(400, "This link is no longer valid.");
-    res.json({ ok: true });
+    res.json({ ok: true, role: invite.user.role });
   } catch (error) {
     next(error);
   }

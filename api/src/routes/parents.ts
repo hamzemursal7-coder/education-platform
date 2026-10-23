@@ -560,6 +560,77 @@ parentsRouter.get("/parent/children/:studentId/fees", requireAuth, requireRole("
   }
 });
 
+function isSchoolHoliday(date: Date) {
+  const weekday = date.getUTCDay();
+  return weekday === 4 || weekday === 5 || weekday === 6;
+}
+
+parentsRouter.get("/parent/children/:studentId/attendance", requireAuth, requireRole("PARENT"), async (req, res, next) => {
+  try {
+    const month = String(req.query.month ?? "");
+    if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, "Choose a month.");
+    const studentId = String(req.params.studentId);
+    const guardian = await prisma.guardian.findFirst({
+      where: { userId: req.authUser!.id, students: { some: { studentId } } },
+    });
+    if (!guardian) throw new HttpError(403, "You are not allowed to access this record.");
+    const start = new Date(`${month}-01T00:00:00.000Z`);
+    const end = new Date(start);
+    end.setUTCMonth(end.getUTCMonth() + 1);
+    const student = await prisma.student.findUnique({
+      where: { id: studentId },
+      include: {
+        enrollments: {
+          include: { school: true, academicYear: true, classGroup: true, section: true },
+          orderBy: { createdAt: "desc" },
+        },
+      },
+    });
+    if (!student) throw new HttpError(404, "Student was not found.");
+    const overlapping = student.enrollments.filter((item) => item.academicYear.startDate < end && item.academicYear.endDate >= start);
+    const enrollment = overlapping.find((item) => item.status === "ACTIVE") ?? overlapping[0] ?? student.enrollments.find((item) => item.status === "ACTIVE") ?? student.enrollments[0];
+    const records = enrollment
+      ? await prisma.attendanceRecord.findMany({
+          where: { enrollmentId: enrollment.id, date: { gte: start, lt: end } },
+          orderBy: [{ date: "asc" }, { session: "asc" }],
+        })
+      : [];
+    const counted = records.filter((item) => !isSchoolHoliday(item.date));
+    const count = (status: string) => counted.filter((item) => item.status === status).length;
+    const present = count("PRESENT");
+    const recorded = counted.length;
+    res.json({
+      month,
+      child: {
+        id: student.id,
+        name: `${student.firstName} ${student.fatherName} ${student.grandfatherName}`,
+        permanentId: student.secondaryPermanentId ?? student.permanentId,
+        school: enrollment?.school.name ?? "",
+        year: enrollment?.academicYear.name ?? "",
+        level: enrollment ? levelLabel(enrollment.classGroup.level) : "",
+        section: enrollment?.section.name ?? "",
+        rollNumber: enrollment?.rollNumber ?? null,
+      },
+      summary: {
+        present,
+        absent: count("ABSENT"),
+        late: count("LATE"),
+        excused: count("EXCUSED"),
+        recorded,
+        percent: recorded ? Math.round((present / recorded) * 1000) / 10 : null,
+      },
+      days: counted.map((item) => ({
+        date: item.date.toISOString().slice(0, 10),
+        session: item.session,
+        status: item.status,
+        note: item.status === "EXCUSED" ? item.note ?? "" : "",
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 parentsRouter.get("/parent/children/:studentId", requireAuth, requireRole("PARENT"), async (req, res, next) => {
   try {
     const guardian = await prisma.guardian.findFirst({

@@ -21,7 +21,7 @@ import { NewStudentPage, StudentProfilePage, StudentsPage } from "./pages/Studen
 import { AlumniSectionTransferPage } from "./pages/AlumniSectionTransferPage";
 import { AlumniPage, AlumniProfilePage, PromotionHistoryPage, PromotionPage } from "./pages/PromotionPages";
 import { FeesPage } from "./pages/FeesPage";
-import { ParentChildPage, ParentDashboard, ParentFeesPage, SchoolParentProfilePage, SchoolParentsPage } from "./pages/ParentPages";
+import { ParentChildPage, ParentDashboard, ParentAttendancePage, ParentFeesPage, SchoolParentProfilePage, SchoolParentsPage } from "./pages/ParentPages";
 import { TransfersPage } from "./pages/TransferPages";
 import { ExamsPage, StudentResultsPage } from "./pages/ResultsPages";
 import { TeacherAssignmentsPage, TeacherDashboard, TeacherExamsPage, TeacherMarksPage, TeacherProfilePage as MyTeacherProfile, TeacherSchoolsPage } from "./pages/TeacherPortalPages";
@@ -95,7 +95,7 @@ export function App() {
       <Route path="/accountant/fees" element={<Protected user={user} role="ACCOUNTANT" title="Fees"><FeesPage /></Protected>} />
       <Route path="/staff/dashboard" element={<Protected user={user} role="STAFF" title="Staff dashboard">{user ? <RoleHome user={user} /> : null}</Protected>} />
       <Route path="/parent/dashboard" element={<Protected user={user} role="PARENT" title="My children"><ParentDashboard /></Protected>} />
-      <Route path="/parent/fees" element={<Protected user={user} role="PARENT" title="Fees"><ParentFeesPage /></Protected>} />
+      <Route path="/parent/attendance" element={<Protected user={user} role="PARENT" title="Attendance"><ParentAttendancePage /></Protected>} />
       <Route path="/parent/children/:studentId" element={<Protected user={user} role="PARENT" title="Child profile"><ParentChildPage /></Protected>} />
       <Route path="/school/fees" element={<Protected user={user} role="SCHOOL_ADMIN" title="Fees"><FeesPage /></Protected>} />
       <Route path="/school/settings" element={<Protected user={user} role="SCHOOL_ADMIN" title="Settings"><SchoolSettingsPage /></Protected>} />

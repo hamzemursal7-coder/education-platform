@@ -702,28 +702,46 @@ export function SetPasswordPage() {
   const params = useParams();
   const token = (params.token || new URLSearchParams(window.location.search).get("token") || "").trim();
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState("");
   const [linkState, setLinkState] = useState<"checking" | "ready" | "invalid" | "saved">("checking");
   const [error, setError] = useState("");
+  const portal = loginPortal(role);
 
   useEffect(() => {
     if (token.length < 20) {
       setLinkState(sessionStorage.getItem("emp_password_saved") === "1" ? "saved" : "invalid");
+      const savedRole = sessionStorage.getItem("emp_password_role") ?? "";
+      if (savedRole) setRole(savedRole);
       return;
     }
     sessionStorage.removeItem("emp_password_saved");
+    sessionStorage.removeItem("emp_password_role");
     fetch("/api/v1/auth/set-password/check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
     })
-      .then((response) => setLinkState(response.ok ? "ready" : "invalid"))
+      .then(async (response) => {
+        if (!response.ok) {
+          setLinkState("invalid");
+          return;
+        }
+        const body = (await response.json().catch(() => null)) as { role?: string } | null;
+        setRole(body?.role ?? "");
+        setLinkState("ready");
+      })
       .catch(() => setLinkState("invalid"));
   }, [token]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError("");
+    if (password !== confirm) {
+      setError("The two passwords do not match.");
+      return;
+    }
     try {
       const response = await fetch("/api/v1/auth/set-password", {
         method: "POST",
@@ -733,6 +751,7 @@ export function SetPasswordPage() {
       const body = (await response.json().catch(() => null)) as { message?: string } | null;
       if (!response.ok) throw new Error(body?.message ?? "Could not save the password.");
       sessionStorage.setItem("emp_password_saved", "1");
+      sessionStorage.setItem("emp_password_role", role);
       window.history.replaceState(null, "", "/set-password");
       setLinkState("saved");
     } catch (caught) {
@@ -745,18 +764,30 @@ export function SetPasswordPage() {
   return (
     <main className="grid min-h-screen place-items-center bg-[#f9fafb] px-4">
       <section className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-3xl font-semibold text-slate-900">Set password</h1>
+        <h1 className="text-3xl font-semibold text-slate-900">Set a new password</h1>
+        {portal && linkState === "ready" ? <p className="mt-2 text-sm text-slate-500">This link opens the {portal.label}.</p> : null}
         {linkState === "checking" ? <p className="mt-6 text-sm text-slate-500">Checking this link...</p> : null}
         {linkState === "invalid" ? <p className="mt-6 rounded-xl bg-rose-50 px-3 py-3 text-sm text-rose-700">{token ? "This link is no longer valid. Ask the school for a new one." : "Open the full link copied by the school. The address must include the long code after set-password."}</p> : null}
-        {linkState === "saved" ? <p className="mt-6 rounded-xl bg-blue-50 px-3 py-3 text-sm text-blue-700">Password saved. This link has been used and cannot be opened again. Sign in with your email.</p> : null}
+        {linkState === "saved" ? (
+          <div className="mt-6">
+            <p className="rounded-xl bg-blue-50 px-3 py-3 text-sm text-blue-700">Password saved. This link has been used and cannot be opened again.</p>
+            <a className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white" href={portal?.href ?? "/login"}>Sign in to the {portal?.label ?? "portal"}</a>
+          </div>
+        ) : null}
         {linkState === "ready" ? (
           <form onSubmit={submit}>
-            <span className="relative mt-6 block">
-              <input className="w-full rounded-xl border border-slate-200 bg-[#f9fafb] px-3 py-2 pr-16 text-slate-800" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
-              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-semibold text-blue-700" onClick={() => setShowPassword((current) => !current)}>
-                {showPassword ? "Hide" : "Show"}
-              </button>
-            </span>
+            <label className="mt-6 block text-sm font-medium text-slate-600">New password
+              <span className="relative mt-1.5 block">
+                <input className="w-full rounded-xl border border-slate-200 bg-[#f9fafb] px-3 py-2.5 pr-16 text-slate-800" type={showPassword ? "text" : "password"} value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} autoComplete="new-password" required />
+                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-semibold text-blue-700" onClick={() => setShowPassword((current) => !current)}>
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </span>
+            </label>
+            <label className="mt-4 block text-sm font-medium text-slate-600">Confirm password
+              <input className="mt-1.5 w-full rounded-xl border border-slate-200 bg-[#f9fafb] px-3 py-2.5 text-slate-800" type={showPassword ? "text" : "password"} value={confirm} onChange={(event) => setConfirm(event.target.value)} minLength={8} autoComplete="new-password" required />
+            </label>
+            <p className="mt-2 text-xs text-slate-500">Use at least 8 characters. The link works once for this {portal?.label ?? "account"}.</p>
             {error ? <p className="mt-4 rounded-xl bg-red-50 px-3 py-2 text-red-600">{error}</p> : null}
             <button className="mt-6 w-full rounded-xl bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500">Save password</button>
           </form>
@@ -764,4 +795,17 @@ export function SetPasswordPage() {
       </section>
     </main>
   );
+}
+
+function loginPortal(role: string) {
+  const portals: Record<string, { href: string; label: string }> = {
+    PARENT: { href: "/parent/login", label: "Parent portal" },
+    STUDENT: { href: "/student/login", label: "Student portal" },
+    TEACHER: { href: "/teacher/login", label: "Teacher portal" },
+    SCHOOL_ADMIN: { href: "/school/login", label: "School portal" },
+    SUPER_ADMIN: { href: "/super-admin/login", label: "Super admin portal" },
+    ACCOUNTANT: { href: "/login", label: "Accountant sign-in" },
+    STAFF: { href: "/login", label: "Staff sign-in" },
+  };
+  return portals[role] ?? null;
 }
