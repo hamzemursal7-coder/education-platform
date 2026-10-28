@@ -61,9 +61,51 @@ reportsRouter.get("/dashboard/school", requireAuth, requireRole("SCHOOL_ADMIN"),
       prisma.attendanceRecord.count({ where: { enrollment: { schoolId: school.id }, status: "PRESENT" } }),
       prisma.attendanceRecord.count({ where: { enrollment: { schoolId: school.id } } }),
     ]);
+
+    const [currentYear, recentPayments, recentEnrollments, recentConduct, attendanceTodayBreakdown] = await Promise.all([
+      prisma.academicYear.findFirst({
+        where: { schoolId: school.id, isCurrent: true },
+        select: { id: true, name: true },
+      }).then(async (y) => y || prisma.academicYear.findFirst({
+        where: { schoolId: school.id },
+        orderBy: { startDate: "desc" },
+        select: { id: true, name: true },
+      })),
+      prisma.payment.findMany({
+        where: { studentFee: { schoolId: school.id } },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        include: { studentFee: { include: { enrollment: { include: { student: true } } } } },
+      }),
+      prisma.enrollment.findMany({
+        where: { schoolId: school.id, status: "ACTIVE" },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        include: { student: true, classGroup: true, section: true },
+      }),
+      prisma.conductReport.findMany({
+        where: { schoolId: school.id },
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        include: { student: true },
+      }),
+      prisma.attendanceRecord.groupBy({
+        by: ["status"],
+        where: { enrollment: { schoolId: school.id }, date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const attMap = new Map(attendanceTodayBreakdown.map((row) => [row.status, row._count._all]));
+    const presentToday = attMap.get("PRESENT") ?? 0;
+    const absentToday = attMap.get("ABSENT") ?? 0;
+    const lateToday = attMap.get("LATE") ?? 0;
+    const onLeaveToday = attMap.get("EXCUSED") ?? 0;
+
     const outstandingAmount = Math.max((feeOutstanding._sum.amount ?? 0) - (feeOutstanding._sum.paidAmount ?? 0), 0);
     res.json({
       school: { id: school.id, name: school.name, code: school.code, type: school.type },
+      academicYear: currentYear?.name ?? "Academic Year 2024 - 2025",
       students,
       activeEnrollments,
       teachers,
@@ -81,6 +123,36 @@ reportsRouter.get("/dashboard/school", requireAuth, requireRole("SCHOOL_ADMIN"),
       publishedAnnouncements,
       exams: upcomingExams,
       attendanceRate: attendanceTotal ? Math.round((attendancePresent / attendanceTotal) * 100) : null,
+      attendanceToday: {
+        present: presentToday,
+        absent: absentToday,
+        late: lateToday,
+        onLeave: onLeaveToday,
+        total: presentToday + absentToday + lateToday + onLeaveToday,
+      },
+      recentActivities: [
+        ...recentEnrollments.map((e) => ({
+          id: `enr-${e.id}`,
+          type: "ENROLLMENT" as const,
+          title: "New student enrolled",
+          subtitle: `${e.student.firstName} ${e.student.fatherName} - Section ${e.section.name}`,
+          time: e.createdAt.toISOString(),
+        })),
+        ...recentPayments.map((p) => ({
+          id: `pay-${p.id}`,
+          type: "PAYMENT" as const,
+          title: "Fee payment received",
+          subtitle: `$${p.amount} - ${p.studentFee?.enrollment?.student?.firstName ?? "Student"} ${p.studentFee?.enrollment?.student?.fatherName ?? ""}`.trim(),
+          time: p.createdAt.toISOString(),
+        })),
+        ...recentConduct.map((c) => ({
+          id: `con-${c.id}`,
+          type: "CONDUCT" as const,
+          title: c.isPositive ? "Student merit awarded" : "Conduct notice filed",
+          subtitle: `${c.student.firstName} ${c.student.fatherName} - ${c.title}`,
+          time: c.createdAt.toISOString(),
+        })),
+      ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 5),
     });
   } catch (error) {
     next(error);
@@ -365,3 +437,48 @@ reportsRouter.get("/reports/fee-defaulters.csv", requireAuth, requireRole("SCHOO
     next(error);
   }
 });
+
+reportsRouter.get("/reports/attendance-summary.csv", requireAuth, requireRole("SCHOOL_ADMIN"), async (req, res, next) => {
+  try {
+    const school = await schoolOfUser(req.authUser!.id);
+    const sections = await prisma.section.findMany({
+      where: { classGroup: { schoolId: school.id } },
+      include: {
+        classGroup: { include: { academicYear: true } },
+        enrollments: {
+          where: { status: "ACTIVE" },
+          include: { attendance: true },
+        },
+      },
+    });
+    const lines = [
+      "academicYear,level,section,students,present,absent,late,total,ratePercent",
+      ...sections.map((section) => {
+        const records = section.enrollments.flatMap((enrollment) => enrollment.attendance);
+        const present = records.filter((item) => item.status === "PRESENT").length;
+        const absent = records.filter((item) => item.status === "ABSENT").length;
+        const late = records.filter((item) => item.status === "LATE").length;
+        const total = records.length;
+        const rate = total ? Math.round((present / total) * 100) : 0;
+        return [
+          section.classGroup.academicYear.name.replaceAll(",", " "),
+          levelLabel(section.classGroup.level),
+          section.name,
+          section.enrollments.length,
+          present,
+          absent,
+          late,
+          total,
+          `${rate}%`,
+        ].join(",");
+      }),
+    ];
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="attendance-summary-${school.code}.csv"`);
+    res.send(lines.join("\n"));
+  } catch (error) {
+    next(error);
+  }
+});
+
+

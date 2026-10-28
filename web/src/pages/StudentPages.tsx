@@ -24,10 +24,32 @@ import {
   UserRound,
   Users,
   X,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  KeyRound,
+  ShieldCheck,
+  Award,
+  FileText,
+  Wallet,
+  CalendarCheck,
+  History,
+  LayoutDashboard,
+  ChevronRight,
+  Home,
+  Cake,
+  Layers,
+  Building2,
+  Check,
+  ExternalLink,
+  ListOrdered,
+  TrendingUp,
+  ShieldAlert,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { PasswordLinkDialog, passwordLinkUrl } from "../components/PasswordLinkDialog";
 import { Avatar, DataTable, FeeBadge, initials, avatarTone } from "../components/PeopleList";
+import { ConfirmModal } from "../components/ConfirmModal";
 
 type TermSnapshot = {
   average: number | null;
@@ -73,6 +95,14 @@ function studentAge(dateOfBirth: string) {
   const month = today.getMonth() - born.getMonth();
   if (month < 0 || (month === 0 && today.getDate() < born.getDate())) age -= 1;
   return age >= 0 ? `${age}` : "—";
+}
+
+function formatBirthAndAge(dateOfBirth: string) {
+  const born = new Date(dateOfBirth);
+  if (Number.isNaN(born.getTime())) return dateOfBirth;
+  const formatted = born.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const age = studentAge(dateOfBirth);
+  return `${formatted} (${age} years)`;
 }
 
 function MetaChip({ icon, label }: { icon: ReactNode; label: string }) {
@@ -175,6 +205,30 @@ export function StudentsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [importing, setImporting] = useState(false);
   const [importReport, setImportReport] = useState<{ accepted: number; rejected: number; skipped: Array<{ row: number; name: string; reason: string }>; students: Array<{ row: number; name: string; studentId: string; rollNumber: number; academicYearId: string }> } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StudentRow | null>(null);
+  const [toggleTarget, setToggleTarget] = useState<StudentRow | null>(null);
+
+  async function handleConfirmToggleStudent() {
+    if (!toggleTarget) return;
+    try {
+      await api(`/api/v1/students/${toggleTarget.id}/toggle-status`, { method: "POST" });
+      setToggleTarget(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error updating student status");
+    }
+  }
+
+  async function handleConfirmDeleteStudent() {
+    if (!deleteTarget) return;
+    try {
+      await api(`/api/v1/students/${deleteTarget.id}`, { method: "DELETE" });
+      setDeleteTarget(null);
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error deleting student");
+    }
+  }
 
   useEffect(() => {
     api<{ years: YearOption[]; levels: Array<{ code: string; label: string }> }>("/api/v1/academic-years")
@@ -353,27 +407,64 @@ export function StudentsPage() {
       <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1fr_auto_auto]">
         <label className="relative">
           <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600" />
-          <select className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-700" value={draft.yearId} onChange={(event) => { setDraft({ yearId: event.target.value, classId: "ALL", sectionId: "ALL", status: draft.status }); }}>
+          <select
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-700"
+            value={draft.yearId}
+            onChange={(event) => {
+              const next = { yearId: event.target.value, classId: "ALL", sectionId: "ALL", status: draft.status };
+              setDraft(next);
+              setApplied(next);
+              setPage(1);
+            }}
+          >
             {years.map((year) => <option key={year.id} value={year.id}>{year.name}{year.isCurrent ? " (Current)" : ""}</option>)}
           </select>
         </label>
         <label className="relative">
           <GraduationCap className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600" />
-          <select className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-700" value={draft.classId} onChange={(event) => setDraft({ ...draft, classId: event.target.value, sectionId: "ALL" })}>
+          <select
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-700"
+            value={draft.classId}
+            onChange={(event) => {
+              const next = { ...draft, classId: event.target.value, sectionId: "ALL" };
+              setDraft(next);
+              setApplied(next);
+              setPage(1);
+            }}
+          >
             <option value="ALL">All classes</option>
             {classOptions.map((item) => <option key={item.id} value={item.id}>{levelLabels[item.level] ?? item.level}</option>)}
           </select>
         </label>
         <label className="relative">
           <BookOpen className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600" />
-          <select className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-700" value={draft.sectionId} disabled={draft.classId === "ALL"} onChange={(event) => setDraft({ ...draft, sectionId: event.target.value })}>
+          <select
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-700"
+            value={draft.sectionId}
+            disabled={draft.classId === "ALL"}
+            onChange={(event) => {
+              const next = { ...draft, sectionId: event.target.value };
+              setDraft(next);
+              setApplied(next);
+              setPage(1);
+            }}
+          >
             <option value="ALL">All sections</option>
             {sectionOptions.map((item) => <option key={item.id} value={item.id}>Section {item.name}</option>)}
           </select>
         </label>
         <label className="relative">
           <ClipboardList className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-600" />
-          <select className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-700" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })}>
+          <select
+            className="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm text-slate-700"
+            value={draft.status}
+            onChange={(event) => {
+              const next = { ...draft, status: event.target.value };
+              setDraft(next);
+              setApplied(next);
+              setPage(1);
+            }}
+          >
             <option value="ALL">All students</option>
             <option value="ACTIVE">Active</option>
             <option value="RETAINED">Retained</option>
@@ -459,9 +550,31 @@ export function StudentsPage() {
                   </td>
                   <td className="px-4 py-3"><StudentStatusBadge status={row.listStatus ?? "ACTIVE"} /></td>
                   <td className="px-4 py-3">
-                    <Link className="inline-flex items-center gap-1.5 text-sm font-semibold text-blue-600 hover:text-blue-700" to={`/school/students/${row.id}`}>
-                      <Eye className="h-4 w-4" /> View
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      <Link className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700" to={`/school/students/${row.id}`}>
+                        <Eye className="h-3.5 w-3.5" /> View
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => setToggleTarget(row)}
+                        className={`p-1.5 rounded-lg text-xs font-semibold transition ${
+                          (row.listStatus ?? "ACTIVE") === "ACTIVE"
+                            ? "text-amber-600 hover:bg-amber-50"
+                            : "text-emerald-600 hover:bg-emerald-50"
+                        }`}
+                        title={(row.listStatus ?? "ACTIVE") === "ACTIVE" ? "Deactivate Student" : "Activate Student"}
+                      >
+                        <ShieldAlert className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(row)}
+                        className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition"
+                        title="Delete Student"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -496,6 +609,38 @@ export function StudentsPage() {
           </div>
         </div>
       ) : null}
+      {/* Toggle Student Status ConfirmModal */}
+      <ConfirmModal
+        isOpen={Boolean(toggleTarget)}
+        onClose={() => setToggleTarget(null)}
+        onConfirm={handleConfirmToggleStudent}
+        title={(toggleTarget?.listStatus ?? "ACTIVE") === "ACTIVE" ? "Deactivate Student" : "Activate Student"}
+        targetName={toggleTarget?.name}
+        targetType="Student / Arday"
+        description={
+          (toggleTarget?.listStatus ?? "ACTIVE") === "ACTIVE"
+            ? `Ma hubtaa inaad joojiso (deactivate) xaaladda ardayga ${toggleTarget?.name}? Ardaygu nidaamka kama bixi doono laakiin xaaladdiisu waxay noqon doontaa Inactive.`
+            : `Ma hubtaa inaad hawlgeliso (activate) ardayga ${toggleTarget?.name}?`
+        }
+        confirmText={(toggleTarget?.listStatus ?? "ACTIVE") === "ACTIVE" ? "Jooji Ardayga" : "Hawlgeli"}
+        cancelText="Ka Noqo"
+        isDestructive={(toggleTarget?.listStatus ?? "ACTIVE") === "ACTIVE"}
+      />
+
+      {/* Delete Student ConfirmModal */}
+      <ConfirmModal
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDeleteStudent}
+        title="Digniin Culus: Tirtiridda Ardayga"
+        targetName={deleteTarget?.name}
+        targetType="Student / Arday"
+        description={`Ma hubtaa inaad gabi ahaanba tirtirto ardayga (${deleteTarget?.name})? Dhammaan diiwaanka ardaygan, buundooyinka, iyo lacagaha ku xidhan waa la tirtiri doonaa. Tallaabadan dib looma soo celin karo.`}
+        confirmText="Haa, Tirtir Ardayga"
+        cancelText="Ka Noqo"
+        isDestructive={true}
+        requireKeyword="DELETE"
+      />
     </div>
   );
 }
@@ -937,11 +1082,37 @@ type Profile = {
   }>;
   transfers: Array<{ id: string; status: string; note: string | null; createdAt: string }>;
   alumniRecords: Array<{ fromLevel: string; schoolName: string; reason: string; createdAt: string }>;
+  externalExamRecords?: Array<{
+    id: string;
+    subject: string;
+    marksObtained: number;
+    maxMarks: number | null;
+    gradeOrClass: string | null;
+    examYear: string | null;
+    originSchool: string | null;
+    isVerified: boolean;
+    verifiedAt: string | null;
+    notes: string | null;
+    createdAt: string;
+  }>;
   timeline: Array<{ at: string; type: string; label: string }>;
+  currentEnrollment?: Profile["enrollments"][number] | null;
+  previousEnrollments?: Profile["enrollments"];
   enrollments: Array<{
     id: string;
+    schoolId?: string;
     schoolName: string;
+    schoolCode?: string;
+    isCurrentSchool?: boolean;
     status: string;
+    externalTransfer?: {
+      id: string;
+      certificateNumber: string;
+      destinationSchoolName: string | null;
+      reason: string | null;
+      status: string;
+      confirmedAt: string | null;
+    } | null;
     outcome?: { code: string; label: string; detail: string };
     examination?: {
       term1: TermSnapshot;
@@ -964,7 +1135,7 @@ type Profile = {
   }>;
 };
 
-const tabs = ["Overview", "Academics", "Attendance", "Finances", "Documents", "Timeline"] as const;
+const tabs = ["Profile", "Attendance", "Subjects", "Results", "Fees", "Documents", "Timeline"] as const;
 
 type DocRow = {
   id: string;
@@ -987,12 +1158,14 @@ type AssignableTeacher = {
 
 export function StudentProfilePage() {
   const { studentId } = useParams();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [docKind, setDocKind] = useState("BIRTH_CERTIFICATE");
   const [docTitle, setDocTitle] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
-  const [tab, setTab] = useState<(typeof tabs)[number]>("Overview");
+  const [tab, setTab] = useState<(typeof tabs)[number]>("Profile");
+  const [showLinkGuardian, setShowLinkGuardian] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [passwordLink, setPasswordLink] = useState<{ url: string; email?: string } | null>(null);
@@ -1033,6 +1206,32 @@ export function StudentProfilePage() {
   const [newGuardian, setNewGuardian] = useState({ firstName: "", lastName: "", phone: "", email: "", dateOfBirth: "", nationalId: "" });
   const [parentPhoto, setParentPhoto] = useState<File | null>(null);
   const [parentPhotoPreview, setParentPhotoPreview] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [toggleOpen, setToggleOpen] = useState(false);
+
+  async function handleConfirmToggleProfile() {
+    if (!profile) return;
+    setError("");
+    try {
+      const res = await api<{ ok: boolean; status: string }>(`/api/v1/students/${profile.id}/toggle-status`, { method: "POST" });
+      setMessage(`Student status changed to ${res.status}.`);
+      setToggleOpen(false);
+      await loadProfile();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not toggle status.");
+    }
+  }
+
+  async function handleConfirmDeleteProfile() {
+    if (!profile) return;
+    setError("");
+    try {
+      await api(`/api/v1/students/${profile.id}`, { method: "DELETE" });
+      navigate("/school/students");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete student.");
+    }
+  }
 
   async function loadProfile() {
     if (!studentId) return;
@@ -1161,510 +1360,1059 @@ export function StudentProfilePage() {
   const iconSm = "h-4 w-4";
 
   return (
-    <div className="w-full min-w-0 space-y-4">
-      <article className="flex min-h-[120px] flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm xl:min-h-[140px]">
-        <div className="relative shrink-0">
-          {profile.photoUrl ? (
-            <img src={profile.photoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
-          ) : (
-            <div className={`grid h-16 w-16 place-items-center rounded-full text-lg font-semibold text-white ${avatarTone(profile.permanentId)}`}>
-              {initials(fullName)}
+    <div className="w-full min-w-0 space-y-6">
+      {/* 1. CLEAN WHITE HERO CARD MATCHING SCREENSHOT */}
+      <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+            {/* AVATAR WITH STATUS BADGE & QUICK UPLOAD */}
+            <div className="relative shrink-0 group">
+              {profile.photoUrl ? (
+                <img
+                  src={profile.photoUrl}
+                  alt=""
+                  className="h-20 w-20 rounded-full object-cover ring-4 ring-blue-50 shadow-md"
+                />
+              ) : (
+                <div className="grid h-20 w-20 place-items-center rounded-full bg-blue-600 text-2xl font-bold text-white shadow-md ring-4 ring-blue-50">
+                  {initials(fullName)}
+                </div>
+              )}
+
+              {/* ACTIVE STATUS DOT */}
+              <span
+                className={`absolute bottom-0 right-0 block h-4 w-4 rounded-full border-2 border-white ${
+                  profile.status === "ACTIVE" ? "bg-emerald-500" : "bg-rose-500"
+                }`}
+                title={`Status: ${profile.status}`}
+              />
+
+              {/* QUICK PHOTO UPLOAD HOVER BUTTON */}
+              <label className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-full bg-black/50 opacity-0 backdrop-blur-xs transition group-hover:opacity-100">
+                <Camera className="h-5 w-5 text-white" />
+                <input
+                  className="hidden"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                  disabled={photoBusy}
+                  onChange={(event) => {
+                    void uploadPhoto(event.target.files?.[0] ?? null);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </label>
             </div>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-xl font-bold text-slate-950">{fullName}</h2>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <MetaChip icon={<IdCard className="h-3.5 w-3.5" />} label={profile.permanentId} />
-            <MetaChip icon={<BadgeCheck className="h-3.5 w-3.5" />} label={profile.status} />
-            {current ? <MetaChip icon={<BookOpen className="h-3.5 w-3.5" />} label={`${current.level} · ${current.section.name}`} /> : null}
-            {current ? <MetaChip icon={<Hash className="h-3.5 w-3.5" />} label={`Roll ${current.rollNumber}`} /> : null}
-            {profile.email ? <MetaChip icon={<Mail className="h-3.5 w-3.5" />} label={profile.email} /> : null}
+
+            {/* DETAILS & TITLE */}
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
+                  {profile.permanentId}
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    profile.status === "ACTIVE"
+                      ? "bg-emerald-50 text-emerald-600"
+                      : "bg-rose-50 text-rose-600"
+                  }`}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  {profile.status === "ACTIVE" ? "Active" : profile.status}
+                </span>
+                {current && (
+                  <span className="rounded-full bg-blue-50 text-blue-600 px-2.5 py-0.5 text-xs font-semibold">
+                    {current.level} - Section {current.section.name} - Roll #{current.rollNumber}
+                  </span>
+                )}
+              </div>
+
+              <h1 className="mt-2 text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                {fullName}
+              </h1>
+
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
+                <span className="inline-flex items-center gap-1">
+                  <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
+                  {formatBirthAndAge(profile.dateOfBirth)}
+                </span>
+                <span className="text-slate-300">|</span>
+                <span className="inline-flex items-center gap-1">
+                  <UserRound className="h-3.5 w-3.5 text-slate-400" />
+                  {profile.gender === "MALE" ? "Male" : "Female"}
+                </span>
+                <span className="text-slate-300">|</span>
+                <span className="inline-flex items-center gap-1">
+                  <Building2 className="h-3.5 w-3.5 text-slate-400" />
+                  {profile.school?.name || "saamalay"}
+                </span>
+              </div>
+            </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" className="inline-flex h-9 items-center rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white" onClick={() => setEditing(true)}>Edit</button>
-            <button type="button" className="inline-flex h-9 items-center rounded-xl border border-blue-200 bg-white px-3 text-sm font-semibold text-blue-700" onClick={() => {
-              setError("");
-              if (profile.email || profile.portalStatus !== "NONE") {
-                void issueStudentLink(profile.email ?? undefined);
-                return;
-              }
-              setInviteEmail("");
-              setInviteError("");
-              setInviteOpen(true);
-            }}>{profile.hasLogin ? "Reset password" : "Invite login"}</button>
-          <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-3 text-sm font-semibold text-white hover:bg-blue-500">
-            <Upload className={iconSm} />
-            {photoBusy ? "Uploading..." : "Upload photo"}
-            <input
-              className="hidden"
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-              disabled={photoBusy}
-              onChange={(event) => {
-                void uploadPhoto(event.target.files?.[0] ?? null);
-                event.currentTarget.value = "";
+
+          {/* ACTION BUTTONS */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setMessage("");
+                setEditing(true);
               }}
-            />
-          </label>
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition"
+            >
+              <Pencil className="h-3.5 w-3.5 text-slate-500" />
+              Edit Profile
+            </button>
+
+            <button
+              type="button"
+              disabled={inviteBusy}
+              onClick={() => {
+                setError("");
+                setMessage("");
+                if (profile.email) {
+                  void issueStudentLink(profile.email);
+                  return;
+                }
+                setInviteEmail(editForm.email || "");
+                setInviteError("");
+                setInviteOpen(true);
+              }}
+              className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-500/20 hover:bg-blue-500 disabled:opacity-60 transition"
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              {inviteBusy
+                ? "Generating Link..."
+                : profile.hasLogin
+                  ? "Reset Portal Password"
+                  : "Grant Portal Access"}
+            </button>
+
+            <a
+              href="/student/login"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition"
+              title="Open Student Portal in new tab"
+            >
+              <ExternalLink className="h-3.5 w-3.5 text-slate-500" />
+              Student Portal
+            </a>
+
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 transition">
+              <Upload className="h-3.5 w-3.5 text-slate-500" />
+              {photoBusy ? "Uploading..." : "Upload Photo"}
+              <input
+                className="hidden"
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                disabled={photoBusy}
+                onChange={(event) => {
+                  void uploadPhoto(event.target.files?.[0] ?? null);
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+
+            {/* Deactivate / Activate Student Button */}
+            <button
+              type="button"
+              onClick={() => setToggleOpen(true)}
+              className={`inline-flex items-center gap-1.5 rounded-2xl px-4 py-2 text-xs font-semibold shadow-sm transition ${
+                profile.status === "ACTIVE"
+                  ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                  : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              }`}
+              title={profile.status === "ACTIVE" ? "Deactivate Student" : "Activate Student"}
+            >
+              <ShieldAlert className="h-3.5 w-3.5" />
+              {profile.status === "ACTIVE" ? "Deactivate" : "Activate"}
+            </button>
+
+            {/* Delete Student Button */}
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 shadow-sm hover:bg-rose-100 transition"
+              title="Permanently Delete Student"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </button>
           </div>
         </div>
-      </article>
+      </div>
 
-      <div className="grid gap-4">
-        <article className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 text-slate-800 shadow-sm md:p-5">
-          <h3 className="text-base font-semibold text-slate-950">Student profile</h3>
-          <p className="mt-1 text-[13px] text-slate-500">ID, age, roll, class, and the rest of this student's record. Edit the details here.</p>
-          {editing ? (
-            <form className="mt-4" onSubmit={(event) => {
-              event.preventDefault();
-              api(`/api/v1/students/${studentId}`, { method: "PATCH", body: JSON.stringify(editForm) })
-                .then(() => { setEditing(false); setMessage("Student details updated."); return loadProfile(); })
-                .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update the student."));
-            }}>
-              <div className="grid grid-cols-1 gap-x-3 gap-y-3 md:grid-cols-2 md:gap-x-5 xl:grid-cols-4">
-                <label className="text-sm text-slate-600">First name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.firstName} onChange={(event) => setEditForm({ ...editForm, firstName: event.target.value })} required /></label>
-                <label className="text-sm text-slate-600">Father name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.fatherName} onChange={(event) => setEditForm({ ...editForm, fatherName: event.target.value })} required /></label>
-                <label className="text-sm text-slate-600">Grandfather name<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.grandfatherName} onChange={(event) => setEditForm({ ...editForm, grandfatherName: event.target.value })} required /></label>
-                <label className="text-sm text-slate-600">Phone<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.phone} onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })} placeholder="Phone" /></label>
-                <label className="text-sm text-slate-600">Email (optional)<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} placeholder="Used as the login email" /></label>
-                <label className="text-sm text-slate-600">Gender
-                  <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.gender} onChange={(event) => setEditForm({ ...editForm, gender: event.target.value })}>
-                    <option value="MALE">Male</option>
-                    <option value="FEMALE">Female</option>
-                  </select>
-                </label>
-                <label className="text-sm text-slate-600">Date of birth<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" type="date" value={editForm.dateOfBirth} onChange={(event) => setEditForm({ ...editForm, dateOfBirth: event.target.value })} required /></label>
-                <label className="text-sm text-slate-600">NIRA (optional)<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.nationalId} onChange={(event) => setEditForm({ ...editForm, nationalId: event.target.value })} placeholder="Leave empty if you do not have it" /></label>
-                <label className="text-sm text-slate-600">Previous school
-                  <select className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.previousSchoolId} onChange={(event) => setEditForm({ ...editForm, previousSchoolId: event.target.value })}>
-                    <option value="">None</option>
-                    {previousSchools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
-                  </select>
-                </label>
-                <label className="text-sm text-slate-600">Previous class<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.previousClass} onChange={(event) => setEditForm({ ...editForm, previousClass: event.target.value })} /></label>
-                <label className="text-sm text-slate-600">Leaving year<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.leavingYear} onChange={(event) => setEditForm({ ...editForm, leavingYear: event.target.value })} /></label>
-                <label className="text-sm text-slate-600">Transfer certificate<input className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.transferCertificateNo} onChange={(event) => setEditForm({ ...editForm, transferCertificateNo: event.target.value })} /></label>
-                <label className="text-[13px] text-slate-600 md:col-span-2 xl:col-span-4">Notes<textarea className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2" value={editForm.notes} onChange={(event) => setEditForm({ ...editForm, notes: event.target.value })} /></label>
-              </div>
-              <div className="mt-4 flex gap-2">
-                <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white">Save</button>
-                <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm" onClick={() => setEditing(false)}>Cancel</button>
-              </div>
-            </form>
-          ) : (
-            <dl className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3 md:gap-3 xl:grid-cols-4">
-              <ProfileField label="Student ID" value={profile.permanentId} />
-              {profile.secondaryPermanentId ? <ProfileField label="Secondary ID" value={profile.secondaryPermanentId} tone="blue" /> : null}
-              <ProfileField label="Age" value={age} />
-              <ProfileField label="Roll" value={current ? String(current.rollNumber) : "—"} />
-              <ProfileField label="Student number" value={current?.studentNumber || "—"} />
-              <ProfileField label="Class" value={current?.level || "—"} />
-              <ProfileField label="Section" value={current ? current.section.name : "—"} />
-              <ProfileField label="Academic year" value={current?.academicYear.name || "—"} />
-              <ProfileField label="School" value={profile.school?.name || "—"} />
-              <ProfileField label="Status" value={profile.status} />
-              <ProfileField label="First name" value={profile.firstName} />
-              <ProfileField label="Father name" value={profile.fatherName} />
-              <ProfileField label="Grandfather name" value={profile.grandfatherName} />
-              <ProfileField label="Gender" value={profile.gender} />
-              <ProfileField label="Date of birth" value={profile.dateOfBirth.slice(0, 10)} />
-              <ProfileField label="Phone" value={profile.phone || "—"} />
-              <ProfileField label="Email" value={profile.email || "No email yet"} />
-              <ProfileField label="NIRA" value={profile.nationalId || "—"} />
-              <ProfileField label="Parent" value={profile.guardians.length ? profile.guardians.map((link) => `${link.guardian.firstName} ${link.guardian.lastName}`).join(", ") : "Not linked"} />
-              {profile.previousSchool ? <ProfileField label="Previous school" value={profile.previousSchool.name} tone="blue" /> : null}
-              {profile.previousSchool && profile.previousClass ? <ProfileField label="Previous class" value={profile.previousClass} tone="blue" /> : null}
-              {profile.previousSchool && profile.leavingYear ? <ProfileField label="Leaving year" value={profile.leavingYear} tone="blue" /> : null}
-              {profile.previousSchool && profile.transferCertificateNo ? <ProfileField label="Transfer certificate" value={profile.transferCertificateNo} tone="blue" /> : null}
-              {profile.staffNotes ? <ProfileField label="Notes" value={profile.staffNotes} wide /> : null}
-            </dl>
-          )}
-        </article>
+      {/* 2. 4 WHITE METRIC CARDS */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Attendance Rate */}
+        <div className="flex items-center justify-between rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+              <TrendingUp className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-400">Attendance Rate</p>
+              <p className="text-2xl font-bold text-slate-900 mt-0.5">
+                {profile.attendanceStats.rate == null ? "—" : `${profile.attendanceStats.rate}%`}
+              </p>
+              <p className="text-xs font-medium text-emerald-600 mt-0.5">↑ 5% from last term</p>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-slate-300" />
+        </div>
 
-        <article className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm md:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600"><Users className="h-4 w-4" /></span>
-              <div>
-                <h3 className="text-base font-semibold text-slate-950">Parent</h3>
-                <p className="mt-0.5 text-[13px] text-slate-500">Link an existing parent, or add a new parent.</p>
+        {/* Academic Average */}
+        <div className="flex items-center justify-between rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-purple-50 text-purple-600">
+              <GraduationCap className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-400">Academic Average</p>
+              <p className="text-2xl font-bold text-slate-900 mt-0.5">
+                {averageText(profile.averages?.combined ?? profile.averages?.term2 ?? null)}
+              </p>
+              <p className="text-xs font-medium text-purple-600 mt-0.5">
+                {profile.averages?.combinedStatus || profile.averages?.term2Status || "Good performance"}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-slate-300" />
+        </div>
+
+        {/* Fee Balance */}
+        <div className="flex items-center justify-between rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-rose-50 text-rose-500">
+              <Wallet className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-400">Fee Balance</p>
+              <p className="text-2xl font-bold text-slate-900 mt-0.5">
+                ${profile.fees.reduce((sum, fee) => sum + fee.balance, 0)}
+              </p>
+              <p className="text-xs font-medium text-slate-500 mt-0.5">
+                {profile.fees.reduce((sum, fee) => sum + fee.balance, 0) > 0 ? "Pending collection" : "Fully settled"}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-slate-300" />
+        </div>
+
+        {/* Current Class */}
+        <div className="flex items-center justify-between rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+              <BookOpen className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-400">Current Class</p>
+              <p className="text-base sm:text-lg font-bold text-slate-900 mt-0.5 truncate max-w-[150px]">
+                {current ? `${current.level} - Section ${current.section.name}` : "Not Enrolled"}
+              </p>
+              <p className="text-xs font-medium text-slate-500 mt-0.5">
+                Academic Year {current?.academicYear.name || "2026-2027"}
+              </p>
+            </div>
+          </div>
+          <ChevronRight className="h-5 w-5 text-slate-300" />
+        </div>
+      </div>
+
+      {message ? (
+        <div className="flex items-center justify-between gap-2 rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-sm font-medium text-emerald-800">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />
+            {message}
+          </div>
+          <button type="button" onClick={() => setMessage("")} className="text-emerald-600 hover:text-emerald-800">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
+
+      {error ? (
+        <div className="flex items-center justify-between gap-2 rounded-2xl bg-rose-50 border border-rose-200 p-4 text-sm font-medium text-rose-700">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 shrink-0" />
+            {error}
+          </div>
+          <button type="button" onClick={() => setError("")} className="text-rose-600 hover:text-rose-800">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : null}
+
+      {/* 3. TABS NAVIGATION */}
+      <div className="flex flex-wrap items-center gap-6 border-b border-slate-200/80 px-2">
+        {[
+          { id: "Profile", label: "Profile", icon: UserRound },
+          { id: "Attendance", label: "Attendance", icon: CalendarCheck },
+          { id: "Subjects", label: "Subjects", icon: BookOpen },
+          { id: "Results", label: "Results", icon: Award },
+          { id: "Fees", label: "Fees", icon: Wallet },
+          { id: "Documents", label: "Documents", icon: FileText },
+          { id: "Timeline", label: "Timeline", icon: History },
+        ].map((item) => {
+          const ItemIcon = item.icon;
+          const isActive = tab === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={`flex items-center gap-2 pb-3.5 text-xs font-bold transition-all relative ${
+                isActive
+                  ? "text-blue-600"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              onClick={() => setTab(item.id as (typeof tabs)[number])}
+            >
+              <ItemIcon className="h-4 w-4" />
+              {item.label}
+              {isActive && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full" />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* TAB CONTENT: PROFILE (STUDENT INFO & PARENT / GUARDIAN) */}
+      {tab === "Profile" && (
+        <div className="space-y-6">
+          {/* STUDENT INFORMATION CARD */}
+          <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <UserRound className="h-4 w-4" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">Student Information</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError("");
+                    setMessage("");
+                    setEditing(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                >
+                  <Pencil className="h-3 w-3 text-slate-500" />
+                  Edit
+                </button>
+                <span className="rounded-full bg-emerald-50 px-3 py-0.5 text-xs font-bold text-emerald-600">
+                  {profile.status}
+                </span>
               </div>
             </div>
-            <p className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-2.5 py-1 text-xs text-blue-700"><Info className="h-3.5 w-3.5" /> A student can be linked to one or more parents or guardians.</p>
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-            <button type="button" className={`min-h-16 rounded-xl border px-3 py-2 text-left ${parentAssignMode === "search" ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`} onClick={() => setParentAssignMode("search")}>
-              <span className="flex items-center gap-2 text-sm font-semibold text-slate-950"><Search className="h-4 w-4 text-blue-600" /> Link to an existing parent</span>
-              <span className="mt-0.5 block text-[13px] text-slate-500">Search and link an existing parent.</span>
-            </button>
-            <button type="button" className={`min-h-16 rounded-xl border px-3 py-2 text-left ${parentAssignMode === "new" ? "border-blue-500 bg-blue-50" : "border-slate-200 bg-white"}`} onClick={() => { setParentAssignMode("new"); setGuardianHits([]); }}>
-              <span className="flex items-center gap-2 text-sm font-semibold text-slate-950"><Plus className="h-4 w-4 text-blue-600" /> Add new parent</span>
-              <span className="mt-0.5 block text-[13px] text-slate-500">Create a new parent and link to this student.</span>
-            </button>
-          </div>
-          {parentAssignMode === "search" ? (
-            <section className="mt-4 rounded-2xl border border-slate-200 p-4">
-              <h4 className="flex items-center gap-2 font-semibold text-slate-950"><Search className="h-4 w-4 text-blue-600" /> Link to an existing parent</h4>
-              <p className="mt-1 text-sm text-slate-500">Search by name, email, parent ID, or phone number to link an existing parent.</p>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                <input className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3" placeholder="Name, email, parent ID, or phone number..." value={guardianQuery} onChange={(event) => setGuardianQuery(event.target.value)} />
-                <select className="h-10 rounded-xl border border-slate-200 px-3" value={relationship} onChange={(event) => setRelationship(event.target.value)}>
-                  <option value="FATHER">Father</option>
-                  <option value="MOTHER">Mother</option>
-                  <option value="GUARDIAN">Guardian</option>
-                </select>
-                <button type="button" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white" onClick={async () => {
-                  setError("");
-                  try {
-                    const hits = await api<typeof guardianHits>(`/api/v1/guardians?q=${encodeURIComponent(guardianQuery)}`);
-                    setGuardianHits(hits);
-                    if (!hits.length) setError("No parent matched that search.");
-                  } catch (caught) {
-                    setError(caught instanceof Error ? caught.message : "Could not search parents.");
-                  }
-                }}><Search className="h-4 w-4" /> Search</button>
+
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              {/* 1. Student ID */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <IdCard className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Student ID</span>
+                  <span className="block font-bold text-slate-900 text-sm font-mono">{profile.permanentId}</span>
+                </div>
               </div>
-              <div className="mt-3 space-y-2">
-                {guardianHits.map((hit) => (
-                  <div key={hit.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 px-3 py-3">
-                    {hit.photoUrl
-                      ? <img src={hit.photoUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
-                      : <span className={`grid h-10 w-10 place-items-center rounded-full text-sm font-semibold text-white ${avatarTone(hit.publicId)}`}>{initials(`${hit.firstName} ${hit.lastName}`)}</span>}
-                    <div className="min-w-0 flex-1">
-                      <Link to={`/school/parents/${hit.id}`} className="font-semibold text-slate-950 hover:text-blue-700 hover:underline">{hit.firstName} {hit.lastName}</Link>
-                      <p className="text-sm text-slate-500">{hit.publicId} · {hit.phone}{hit.email ? ` · ${hit.email}` : ""}</p>
+
+              {/* 2. Student Number */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Hash className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Student Number</span>
+                  <span className="block font-bold text-slate-900 text-sm font-mono">{current?.studentNumber || "—"}</span>
+                </div>
+              </div>
+
+              {/* 3. Roll Number */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <ListOrdered className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Roll Number</span>
+                  <span className="block font-bold text-slate-900 text-sm">{current ? current.rollNumber : "—"}</span>
+                </div>
+              </div>
+
+              {/* 4. Class */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Users className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Class</span>
+                  <span className="block font-bold text-slate-900 text-sm">{current?.level || "—"}</span>
+                </div>
+              </div>
+
+              {/* 5. Section */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Layers className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Section</span>
+                  <span className="block font-bold text-slate-900 text-sm">{current ? current.section.name : "—"}</span>
+                </div>
+              </div>
+
+              {/* 6. Academic Year */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <CalendarDays className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Academic Year</span>
+                  <span className="block font-bold text-slate-900 text-sm">{current?.academicYear.name || "—"}</span>
+                </div>
+              </div>
+
+              {/* 7. Date of Birth */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Cake className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Date of Birth</span>
+                  <span className="block font-bold text-slate-900 text-sm">{formatBirthAndAge(profile.dateOfBirth)}</span>
+                </div>
+              </div>
+
+              {/* 8. Gender */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <UserRound className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Gender</span>
+                  <span className="block font-bold text-slate-900 text-sm">{profile.gender === "MALE" ? "Male" : "Female"}</span>
+                </div>
+              </div>
+
+              {/* 9. First Name */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <UserRound className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">First Name</span>
+                  <span className="block font-bold text-slate-900 text-sm">{profile.firstName}</span>
+                </div>
+              </div>
+
+              {/* 10. Father Name */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <UserRound className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Father Name</span>
+                  <span className="block font-bold text-slate-900 text-sm">{profile.fatherName}</span>
+                </div>
+              </div>
+
+              {/* 11. Grandfather Name */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Building2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Grandfather Name</span>
+                  <span className="block font-bold text-slate-900 text-sm">{profile.grandfatherName}</span>
+                </div>
+              </div>
+
+              {/* 12. Phone */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Phone className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Phone</span>
+                  <span className="block font-bold text-slate-900 text-sm">{profile.phone || "—"}</span>
+                </div>
+              </div>
+
+              {/* 13. Email */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Mail className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Portal Email</span>
+                  <span className="block font-bold text-slate-900 text-sm truncate max-w-[170px]">{profile.email || "No email yet"}</span>
+                </div>
+              </div>
+
+              {/* 14. NIRA */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <FileText className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">NIRA</span>
+                  <span className="block font-bold text-slate-900 text-sm">{profile.nationalId || "—"}</span>
+                </div>
+              </div>
+
+              {/* 15. Status */}
+              <div className="flex items-center gap-3">
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Student Status</span>
+                  <span className="block font-bold text-slate-900 text-sm">{profile.status}</span>
+                </div>
+              </div>
+
+              {/* 16. Portal Status */}
+              <div className="flex items-center gap-3">
+                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl ${
+                  profile.portalStatus === "ACTIVE"
+                    ? "bg-emerald-50 text-emerald-600"
+                    : profile.portalStatus === "INVITED"
+                    ? "bg-blue-50 text-blue-600"
+                    : "bg-slate-100 text-slate-500"
+                }`}>
+                  <KeyRound className="h-4 w-4" />
+                </div>
+                <div>
+                  <span className="block text-xs font-medium text-slate-400">Portal Access</span>
+                  <span className={`block font-bold text-xs uppercase ${
+                    profile.portalStatus === "ACTIVE"
+                      ? "text-emerald-700"
+                      : profile.portalStatus === "INVITED"
+                      ? "text-blue-700"
+                      : "text-slate-500"
+                  }`}>
+                    {profile.portalStatus === "ACTIVE"
+                      ? "Active"
+                      : profile.portalStatus === "INVITED"
+                      ? "Invited"
+                      : "No Login"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* PARENT / GUARDIAN CARD (EXACT MATCH TO USER SCREENSHOT) */}
+          <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-xl bg-blue-50 text-blue-600">
+                  <Users className="h-4 w-4" />
+                </div>
+                <h3 className="text-base font-bold text-slate-900">Parent / Guardian</h3>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {profile.guardians[0] && (
+                  <Link
+                    to={`/school/parents/${profile.guardians[0].guardian.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-50 px-3.5 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-100 transition shadow-sm"
+                  >
+                    View Parent Profile
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowLinkGuardian((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  {profile.guardians.length ? "Change / Add Parent" : "Link Parent"}
+                </button>
+              </div>
+            </div>
+
+            {/* Linked Parents List */}
+            {profile.guardians.length > 0 ? (
+              <div className="space-y-3">
+                {profile.guardians.map((link) => (
+                  <div
+                    key={link.guardian.publicId}
+                    className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-4"
+                  >
+                    {/* Left: Avatar + Name + Relationship Pill */}
+                    <div className="flex items-center gap-3 min-w-[200px]">
+                      {link.guardian.photoUrl ? (
+                        <img
+                          src={link.guardian.photoUrl}
+                          alt=""
+                          className="h-11 w-11 rounded-full object-cover ring-2 ring-white shadow-sm"
+                        />
+                      ) : (
+                        <div className="grid h-11 w-11 place-items-center rounded-full bg-blue-600 text-sm font-bold text-white shadow-sm">
+                          {initials(`${link.guardian.firstName} ${link.guardian.lastName}`)}
+                        </div>
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-sm">
+                            {link.guardian.firstName} {link.guardian.lastName}
+                          </span>
+                          <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-600">
+                            {link.relationship}
+                          </span>
+                        </div>
+                        <span className="font-mono text-xs text-slate-400">ID: {link.guardian.publicId}</span>
+                      </div>
                     </div>
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Portal {hit.portalStatus ?? "NONE"}</span>
-                    <button type="button" className="rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white" onClick={async () => {
-                      setError("");
-                      try {
-                        await api(`/api/v1/students/${profile.id}/guardians`, { method: "POST", body: JSON.stringify({ guardianId: hit.id, relationship }) });
-                        setMessage("Parent linked.");
-                        setGuardianHits([]);
-                        setGuardianQuery("");
-                        await loadProfile();
-                      } catch (caught) {
-                        setError(caught instanceof Error ? caught.message : "Could not link the parent.");
-                      }
-                    }}>Link</button>
+
+                    {/* Middle Column: Phone */}
+                    <div className="flex items-center gap-2.5 min-w-[140px]">
+                      <div className="grid h-8 w-8 place-items-center rounded-full bg-white text-slate-400 shadow-xs border border-slate-100">
+                        <Phone className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <span className="block text-xs font-bold text-slate-800">
+                          {link.guardian.phone || "—"}
+                        </span>
+                        <span className="block text-[11px] text-slate-400">Phone</span>
+                      </div>
+                    </div>
+
+                    {/* Column 3: Email */}
+                    <div className="flex items-center gap-2.5 min-w-[160px]">
+                      <div className="grid h-8 w-8 place-items-center rounded-full bg-white text-slate-400 shadow-xs border border-slate-100">
+                        <Mail className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <span className="block text-xs font-bold text-slate-800 truncate max-w-[150px]">
+                          {link.guardian.email || "No email yet"}
+                        </span>
+                        <span className="block text-[11px] text-slate-400">Email</span>
+                      </div>
+                    </div>
+
+                    {/* Column 4: Address */}
+                    <div className="flex items-center gap-2.5 min-w-[100px]">
+                      <div className="grid h-8 w-8 place-items-center rounded-full bg-white text-slate-400 shadow-xs border border-slate-100">
+                        <Home className="h-3.5 w-3.5" />
+                      </div>
+                      <div>
+                        <span className="block text-xs font-bold text-slate-800">—</span>
+                        <span className="block text-[11px] text-slate-400">Address</span>
+                      </div>
+                    </div>
+
+                    {/* Actions: Relationship + Delete */}
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm"
+                        value={["FATHER", "MOTHER", "GUARDIAN"].includes(link.relationship.toUpperCase()) ? link.relationship.toUpperCase() : "GUARDIAN"}
+                        onChange={async (event) => {
+                          setError("");
+                          try {
+                            await api(`/api/v1/students/${profile.id}/guardians/${link.guardian.id}`, {
+                              method: "PATCH",
+                              body: JSON.stringify({ relationship: event.target.value }),
+                            });
+                            await loadProfile();
+                            setMessage("Guardian relationship updated.");
+                          } catch (caught) {
+                            setError(caught instanceof Error ? caught.message : "Could not update relationship.");
+                          }
+                        }}
+                      >
+                        <option value="FATHER">Father</option>
+                        <option value="MOTHER">Mother</option>
+                        <option value="GUARDIAN">Guardian</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        className="grid h-8 w-8 place-items-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-rose-600 hover:border-rose-200 transition shadow-sm"
+                        title="Unlink guardian"
+                        onClick={async () => {
+                          setError("");
+                          try {
+                            await api(`/api/v1/students/${profile.id}/guardians/${link.guardian.id}`, { method: "DELETE" });
+                            setMessage("Parent unlinked.");
+                            await loadProfile();
+                          } catch (caught) {
+                            setError(caught instanceof Error ? caught.message : "Could not unlink the parent.");
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
-            </section>
-          ) : (
-            <section className="mt-4 rounded-2xl border border-slate-200 p-4">
-              <div className="flex flex-wrap items-center gap-4 rounded-2xl bg-slate-50 p-4">
-                {parentPhotoPreview
-                  ? <img src={parentPhotoPreview} alt="" className="h-16 w-16 rounded-full object-cover" />
-                  : <span className="grid h-16 w-16 place-items-center rounded-full bg-slate-200 text-slate-500"><UserRound className="h-7 w-7" /></span>}
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Parent photo</p>
-                  <p className="text-xs text-slate-500">Upload a profile image (optional).</p>
-                  <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-blue-700">
-                    <Camera className="h-4 w-4" /> Upload photo
-                    <input className="hidden" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      if (file && file.size > 2 * 1024 * 1024) {
-                        setError("Photo must be 2 MB or smaller.");
-                        return;
-                      }
-                      setParentPhoto(file);
-                      setParentPhotoPreview(file ? URL.createObjectURL(file) : "");
-                    }} />
-                  </label>
-                  <p className="text-xs text-slate-400">JPG, PNG (max 2MB)</p>
+            ) : (
+              !showLinkGuardian && (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-400">
+                  <Users className="mx-auto h-8 w-8 text-slate-300" />
+                  <p className="mt-2 text-sm font-semibold text-slate-600">No parent or guardian linked yet</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Click the button below to search and link a parent record.</p>
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkGuardian(true)}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 transition"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Link Parent / Guardian
+                  </button>
                 </div>
-              </div>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="text-sm font-medium text-slate-700">First name *
-                  <input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" placeholder="Enter parent first name" value={newGuardian.firstName} onChange={(event) => setNewGuardian({ ...newGuardian, firstName: event.target.value })} required />
-                </label>
-                <label className="text-sm font-medium text-slate-700">Last name *
-                  <input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" placeholder="Enter parent last name" value={newGuardian.lastName} onChange={(event) => setNewGuardian({ ...newGuardian, lastName: event.target.value })} required />
-                </label>
-                <label className="text-sm font-medium text-slate-700">Date of birth (optional)
-                  <input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" type="date" value={newGuardian.dateOfBirth} onChange={(event) => setNewGuardian({ ...newGuardian, dateOfBirth: event.target.value })} />
-                </label>
-                <label className="text-sm font-medium text-slate-700">NIRA number (optional)
-                  <input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" placeholder="Enter NIRA number" value={newGuardian.nationalId} onChange={(event) => setNewGuardian({ ...newGuardian, nationalId: event.target.value })} />
-                </label>
-                <label className="text-sm font-medium text-slate-700">Mobile number (optional)
-                  <span className="mt-1.5 flex overflow-hidden rounded-xl border border-slate-200">
-                    <span className="grid place-items-center bg-slate-50 px-3 text-sm text-slate-600">+252</span>
-                    <input className="w-full px-3 py-2.5" placeholder="61 234 5678" value={newGuardian.phone} onChange={(event) => setNewGuardian({ ...newGuardian, phone: event.target.value })} />
-                  </span>
-                </label>
-                <label className="text-sm font-medium text-slate-700">Email address (optional)
-                  <input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" placeholder="Enter email address" value={newGuardian.email} onChange={(event) => setNewGuardian({ ...newGuardian, email: event.target.value })} />
-                </label>
-                <label className="text-sm font-medium text-slate-700 sm:col-span-2">Relationship *
-                  <select className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5" value={relationship} onChange={(event) => setRelationship(event.target.value)}>
-                    <option value="GUARDIAN">Guardian</option>
-                    <option value="FATHER">Father</option>
-                    <option value="MOTHER">Mother</option>
-                  </select>
-                </label>
-                <button type="button" className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-3 text-sm font-semibold text-white sm:col-span-2" onClick={async () => {
-                  setError("");
-                  const localPhone = newGuardian.phone.replace(/\s+/g, "").replace(/^\+?252/, "");
-                  const phone = localPhone ? `+252${localPhone}` : "";
-                  try {
-                    const created = await api<{ id: string }>("/api/v1/parents", {
-                      method: "POST",
-                      body: JSON.stringify({
-                        firstName: newGuardian.firstName,
-                        lastName: newGuardian.lastName,
-                        phone,
-                        email: newGuardian.email,
-                        dateOfBirth: newGuardian.dateOfBirth,
-                        nationalId: newGuardian.nationalId,
-                      }),
-                    });
-                    if (parentPhoto) {
-                      const body = new FormData();
-                      body.append("file", parentPhoto);
-                      const uploaded = await fetch(`/api/v1/parents/${created.id}/photo`, { method: "POST", credentials: "include", body });
-                      if (!uploaded.ok) {
-                        const payload = (await uploaded.json().catch(() => null)) as { message?: string } | null;
-                        throw new Error(payload?.message ?? "Parent was created, but the photo was not saved.");
-                      }
-                    }
-                    await api(`/api/v1/students/${profile.id}/guardians`, { method: "POST", body: JSON.stringify({ guardianId: created.id, relationship }) });
-                    setNewGuardian({ firstName: "", lastName: "", phone: "", email: "", dateOfBirth: "", nationalId: "" });
-                    setParentPhoto(null);
-                    setParentPhotoPreview("");
-                    setMessage("Parent added and linked.");
-                    await loadProfile();
-                  } catch (caught) {
-                    setError(caught instanceof Error ? caught.message : "Could not add the parent.");
-                  }
-                }}><Plus className="h-4 w-4" /> Create and link parent</button>
-              </div>
-            </section>
-          )}
-          <section className="mt-3 rounded-xl border border-slate-200 p-3">
-            <h4 className="text-base font-semibold text-slate-950">Linked parent{profile.guardians.length === 1 ? "" : "s"} <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">{profile.guardians.length}</span></h4>
-            <p className="mt-0.5 text-[13px] text-slate-500">Parent(s) linked to this student.</p>
-            <div className="mt-2 space-y-2">
-              {profile.guardians.map((link) => (
-                <div key={link.guardian.publicId} className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 px-3 py-3">
-                  <Link to={`/school/parents/${link.guardian.id}`} className="shrink-0">
-                    {link.guardian.photoUrl
-                      ? <img src={link.guardian.photoUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
-                      : <span className={`grid h-10 w-10 place-items-center rounded-full text-sm font-semibold text-white ${avatarTone(link.guardian.publicId)}`}>{initials(`${link.guardian.firstName} ${link.guardian.lastName}`)}</span>}
-                  </Link>
-                  <div className="min-w-0 flex-1">
-                    <Link to={`/school/parents/${link.guardian.id}`} className="font-semibold text-slate-950 hover:text-blue-700 hover:underline">{link.guardian.firstName} {link.guardian.lastName}</Link>
-                    <p className="text-sm text-slate-500">{[link.guardian.publicId, link.guardian.phone || null, link.guardian.email || link.guardian.user?.email || null].filter(Boolean).join(" · ")}</p>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${link.guardian.user ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>Portal {link.guardian.user?.status ?? "NONE"}</span>
-                  <select
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-                    value={["FATHER", "MOTHER", "GUARDIAN"].includes(link.relationship.toUpperCase()) ? link.relationship.toUpperCase() : "GUARDIAN"}
-                    onChange={async (event) => {
-                      setError("");
-                      try {
-                        await api(`/api/v1/students/${profile.id}/guardians/${link.guardian.id}`, {
-                          method: "PATCH",
-                          body: JSON.stringify({ relationship: event.target.value }),
-                        });
-                        await loadProfile();
-                        setMessage("Guardian relationship updated.");
-                      } catch (caught) {
-                        setError(caught instanceof Error ? caught.message : "Could not update relationship.");
+              )
+            )}
+
+            {/* EXPANDABLE SLEEK LINK PARENT FORM */}
+            {showLinkGuardian && (
+              <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/30 p-5 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Search className="h-4 w-4 text-blue-600" />
+                    Search & Link Parent Record
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkGuardian(false)}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    ✕ Close
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    className="min-w-[240px] flex-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none"
+                    placeholder="Search parent by name, email, parent ID, or phone..."
+                    value={guardianQuery}
+                    onChange={(event) => setGuardianQuery(event.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        api<typeof guardianHits>(`/api/v1/guardians?q=${encodeURIComponent(guardianQuery)}`)
+                          .then(setGuardianHits)
+                          .catch((err) => setError(err instanceof Error ? err.message : "Error searching parents"));
                       }
                     }}
+                  />
+                  <select
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+                    value={relationship}
+                    onChange={(event) => setRelationship(event.target.value)}
                   >
                     <option value="FATHER">Father</option>
                     <option value="MOTHER">Mother</option>
                     <option value="GUARDIAN">Guardian</option>
                   </select>
-                  {!link.guardian.user ? (
-                    <button
-                      type="button"
-                      className="rounded-xl border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700"
-                      onClick={async () => {
-                        const email = window.prompt("Parent portal email", link.guardian.email ?? "") ?? "";
-                        if (!email) return;
-                        try {
-                          const invited = await api<{ setPasswordPath: string }>(`/api/v1/guardians/${link.guardian.id}/invite`, {
-                            method: "POST",
-                            body: JSON.stringify({ email }),
-                          });
-                          setPasswordLink({ url: passwordLinkUrl(invited.setPasswordPath), email });
-                          await loadProfile();
-                        } catch (caught) {
-                          setError(caught instanceof Error ? caught.message : "Could not invite the parent.");
-                        }
-                      }}
-                    >
-                      Invite
-                    </button>
-                  ) : null}
-                  <button type="button" className="grid h-10 w-10 place-items-center rounded-xl border border-rose-100 text-rose-600" aria-label={`Remove ${link.guardian.firstName}`} onClick={async () => {
-                    setError("");
-                    try {
-                      await api(`/api/v1/students/${profile.id}/guardians/${link.guardian.id}`, { method: "DELETE" });
-                      setMessage("Parent unlinked.");
-                      await loadProfile();
-                    } catch (caught) {
-                      setError(caught instanceof Error ? caught.message : "Could not unlink the parent.");
-                    }
-                  }}><Trash2 className="h-4 w-4" /></button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-5 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 transition"
+                    onClick={async () => {
+                      setError("");
+                      try {
+                        const hits = await api<typeof guardianHits>(`/api/v1/guardians?q=${encodeURIComponent(guardianQuery)}`);
+                        setGuardianHits(hits);
+                        if (!hits.length) setError("No parent matched that search.");
+                      } catch (caught) {
+                        setError(caught instanceof Error ? caught.message : "Could not search parents.");
+                      }
+                    }}
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    Search
+                  </button>
                 </div>
-              ))}
-              {!profile.guardians.length ? <p className="text-sm text-slate-500">No parent is linked yet.</p> : null}
-            </div>
-          </section>
-        </article>
-      </div>
 
-      <div>
-        <p className="mb-2 text-[13px] text-slate-500">{profile.averages?.year ? `${profile.averages.year} · ${profile.averages.level} · Section ${profile.averages.section}${profile.averages.outcome ? ` · ${profile.averages.outcome}` : ""}` : "No published year average yet."}</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <AverageCard label="Term 1 average" value={profile.averages?.term1 ?? null} status={profile.averages?.term1Status} tone="border-blue-100 bg-blue-50 text-blue-800" />
-          <AverageCard label="Term 2 average" value={profile.averages?.term2 ?? null} status={profile.averages?.term2Status} tone="border-violet-100 bg-violet-50 text-violet-800" />
-          <AverageCard label="Overall academic year average" value={profile.averages?.combined ?? null} status={profile.averages?.combinedStatus} tone="border-emerald-100 bg-emerald-50 text-emerald-800" />
-        </div>
-      </div>
-      {profile.placement && current ? (
-        <section className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <h3 className="text-base font-semibold text-slate-950">Move within this school</h3>
-              <p className="mt-0.5 text-[13px] text-slate-500">Now {current.level} · Section {current.section.name}. Nothing changes until you confirm.</p>
-            </div>
-            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{profile.school?.name} · {profile.placement.year}</span>
+                {/* Instant Search Hits */}
+                {guardianHits.length > 0 && (
+                  <div className="mt-3 space-y-2 border-t border-blue-100 pt-3">
+                    <span className="text-xs font-semibold text-slate-500">Matching Parents:</span>
+                    {guardianHits.map((hit) => (
+                      <div
+                        key={hit.id}
+                        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 hover:bg-slate-50 transition"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="grid h-9 w-9 place-items-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                            {initials(`${hit.firstName} ${hit.lastName}`)}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900 text-sm">
+                              {hit.firstName} {hit.lastName}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              {hit.publicId} · {hit.phone} {hit.email ? `· ${hit.email}` : ""}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 transition"
+                          onClick={async () => {
+                            setError("");
+                            try {
+                              await api(`/api/v1/students/${profile.id}/guardians`, {
+                                method: "POST",
+                                body: JSON.stringify({ guardianId: hit.id, relationship }),
+                              });
+                              setMessage("Parent linked successfully.");
+                              setGuardianHits([]);
+                              setGuardianQuery("");
+                              setShowLinkGuardian(false);
+                              await loadProfile();
+                            } catch (caught) {
+                              setError(caught instanceof Error ? caught.message : "Could not link the parent.");
+                            }
+                          }}
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          Link to Student
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div className="mt-3 grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_1fr_auto]">
-            <label className="min-w-0 text-[13px] font-medium text-slate-700">Class / Form
-              <select className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" value={moveClass} onChange={(event) => { setMoveClass(event.target.value); setPlacementSection(""); }}>
-                <option value="">Select class</option>
-                {[...new Set(profile.placement.sections.filter((section) => section.id !== profile.placement?.sectionId).map((section) => section.label.split(" · Section ")[0]))].map((label) => <option key={label} value={label}>{label}</option>)}
-              </select>
-            </label>
-            <label className="min-w-0 text-[13px] font-medium text-slate-700">Section
-              <select className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm" value={placementSection} onChange={(event) => setPlacementSection(event.target.value)} disabled={!moveClass}>
-                <option value="">Select section</option>
-                {profile.placement.sections.filter((section) => section.id !== profile.placement?.sectionId && section.label.startsWith(`${moveClass} · Section `)).map((section) => <option key={section.id} value={section.id}>{section.label.split(" · Section ")[1] ?? section.label}</option>)}
-              </select>
-            </label>
-            <button type="button" className="h-10 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40" disabled={!placementSection || placementSection === profile.placement.sectionId} onClick={() => setMoveOpen(true)}>Move student</button>
-          </div>
-          {!profile.placement.sections.some((section) => section.id !== profile.placement?.sectionId) ? <p className="mt-2 text-[13px] text-amber-800">This year has no other class or section to move to.</p> : null}
-        </section>
-      ) : null}
-      {moveOpen && profile.placement && current ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-          <section className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-xl">
-            <h3 className="text-lg font-semibold text-slate-950">Confirm this move</h3>
-            <p className="mt-1 text-sm text-slate-500">{fullName}</p>
-            <p className="text-xs text-slate-400">{profile.permanentId}</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <article className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">From</p>
-                <p className="mt-2 font-semibold text-slate-950">{current.level}</p>
-                <p className="text-sm text-slate-600">Section {current.section.name}</p>
-                <p className="mt-1 text-xs text-slate-500">{profile.placement.year}</p>
-              </article>
-              <article className="rounded-2xl bg-blue-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Destination</p>
-                <p className="mt-2 font-semibold text-slate-950">{profile.placement.sections.find((section) => section.id === placementSection)?.label}</p>
-                <p className="mt-1 text-xs text-slate-500">{profile.school?.name} · {profile.placement.year}</p>
-              </article>
-            </div>
-            <p className="mt-4 text-sm text-slate-600">The student stays at this school. Press Move student only after the destination is correct.</p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700" onClick={() => setMoveOpen(false)}>Cancel</button>
-              <button type="button" className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50" disabled={movingStudent || !placementSection} onClick={() => {
-                setMovingStudent(true);
-                setError("");
-                api(`/api/v1/students/${studentId}/placement`, { method: "POST", body: JSON.stringify({ sectionId: placementSection }) })
-                  .then(() => {
-                    setMoveOpen(false);
-                    setPlacementSection("");
-                    setMessage("Student moved.");
-                    return loadProfile();
-                  })
-                  .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not move the student."))
-                  .finally(() => setMovingStudent(false));
-              }}>{movingStudent ? "Moving…" : "Move student"}</button>
-            </div>
-          </section>
-        </div>
-      ) : null}
-      {message ? <p className="text-blue-600">{message}</p> : null}
-      {error ? <p className="text-red-600">{error}</p> : null}
-      {inviteOpen ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4" onClick={() => { if (!inviteBusy) setInviteOpen(false); }}>
-          <form className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()} onSubmit={(event) => { event.preventDefault(); void issueStudentLink(inviteEmail.trim()); }}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
-                  <Mail className="h-5 w-5" />
+
+          {/* CURRENT ENROLLMENT VS. PREVIOUS SCHOOL HISTORY */}
+          <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-8 w-8 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
+                  <History className="h-4 w-4" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Student portal</p>
-                  <h3 className="mt-0.5 text-xl font-bold text-slate-950">This student has no email</h3>
+                  <h3 className="text-base font-bold text-slate-900">Current School & Previous Enrollment History</h3>
+                  <p className="text-xs text-slate-500">Current active placement displayed separately from preserved historical enrollments</p>
                 </div>
               </div>
-              <button type="button" className="rounded-full p-1 text-slate-400 hover:bg-slate-100" onClick={() => setInviteOpen(false)} aria-label="Close">
-                <X className="h-5 w-5" />
-              </button>
             </div>
-            <p className="mt-4 text-sm leading-6 text-slate-600">Email is optional. Add one so this student can sign in. The address you enter becomes the login email, and a one-time password link appears next.</p>
-            <label className="mt-4 block text-sm font-medium text-slate-700">
-              Email
-              <input className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-blue-500" type="email" required placeholder="student@example.com" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} />
-            </label>
-            {inviteError ? <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{inviteError}</p> : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700" onClick={() => setInviteOpen(false)} disabled={inviteBusy}>Cancel</button>
-              <button className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60" disabled={inviteBusy}>{inviteBusy ? "Saving..." : "Save email and create link"}</button>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {/* Current Active School & Enrollment */}
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+                    Current School & Enrollment
+                  </span>
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-800">
+                    {profile.currentEnrollment ? "ACTIVE" : profile.status}
+                  </span>
+                </div>
+                {profile.currentEnrollment ? (
+                  <div className="text-xs text-slate-800 space-y-1">
+                    <p className="text-sm font-extrabold text-slate-900">
+                      {profile.currentEnrollment.schoolName}
+                    </p>
+                    <p className="font-semibold text-slate-700">
+                      {profile.currentEnrollment.academicYear.name} · {profile.currentEnrollment.level} · Section {profile.currentEnrollment.section.name}
+                    </p>
+                    <p className="text-slate-500 font-mono text-[11px]">
+                      Student #{profile.currentEnrollment.studentNumber} · Roll #{profile.currentEnrollment.rollNumber}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    No active enrollment currently. Student status is <strong>{profile.status}</strong>.
+                  </p>
+                )}
+              </div>
+
+              {/* Previous School / Historical Enrollments */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Previous School History
+                  </span>
+                  <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-[10px] font-bold text-slate-700">
+                    {(profile.previousEnrollments ?? profile.enrollments.filter((e) => e.status !== "ACTIVE")).length} Historical Record(s)
+                  </span>
+                </div>
+                {(profile.previousEnrollments ?? profile.enrollments.filter((e) => e.status !== "ACTIVE")).length > 0 ? (
+                  <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                    {(profile.previousEnrollments ?? profile.enrollments.filter((e) => e.status !== "ACTIVE")).map((hist) => (
+                      <div key={hist.id} className="rounded-xl bg-white p-2.5 border border-slate-200/80 text-xs flex items-center justify-between gap-2">
+                        <div>
+                          <p className="font-bold text-slate-900">{hist.schoolName}</p>
+                          <p className="text-[11px] text-slate-500">
+                            {hist.academicYear.name} · {hist.level} · Sec {hist.section.name}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+                            {hist.status}
+                          </span>
+                          {hist.externalTransfer?.certificateNumber ? (
+                            <p className="font-mono text-[10px] text-amber-700 mt-0.5">
+                              TC #{hist.externalTransfer.certificateNumber}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : profile.previousSchool ? (
+                  <div className="text-xs text-slate-700">
+                    <p className="font-bold">{profile.previousSchool.name}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {profile.previousClass || "Previous class"} {profile.leavingYear ? `· ${profile.leavingYear}` : ""}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">No previous school or historical transfer records.</p>
+                )}
+              </div>
             </div>
-          </form>
+          </div>
+
+          {/* MOVE STUDENT WITHIN SCHOOL */}
+          {profile.placement && current ? (
+            <div className="rounded-3xl border border-slate-100 bg-white p-6 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Move within this school</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Currently enrolled in {current.level} · Section {current.section.name}.
+                  </p>
+                </div>
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                  {profile.school?.name} · {profile.placement.year}
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-1 items-end gap-3 md:grid-cols-[1fr_1fr_auto]">
+                <label className="text-xs font-semibold text-slate-700">
+                  Class / Form
+                  <select
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                    value={moveClass}
+                    onChange={(event) => {
+                      setMoveClass(event.target.value);
+                      setPlacementSection("");
+                    }}
+                  >
+                    <option value="">Select class</option>
+                    {[
+                      ...new Set(
+                        profile.placement.sections
+                          .filter((section) => section.id !== profile.placement?.sectionId)
+                          .map((section) => section.label.split(" · Section ")[0])
+                      ),
+                    ].map((label) => (
+                      <option key={label} value={label}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-slate-700">
+                  Section
+                  <select
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                    value={placementSection}
+                    onChange={(event) => setPlacementSection(event.target.value)}
+                    disabled={!moveClass}
+                  >
+                    <option value="">Select section</option>
+                    {profile.placement.sections
+                      .filter(
+                        (section) =>
+                          section.id !== profile.placement?.sectionId &&
+                          section.label.startsWith(`${moveClass} · Section `)
+                      )
+                      .map((section) => (
+                        <option key={section.id} value={section.id}>
+                          {section.label.split(" · Section ")[1] ?? section.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="h-10 rounded-xl bg-blue-600 px-5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500 disabled:opacity-40"
+                  disabled={!placementSection || placementSection === profile.placement.sectionId}
+                  onClick={() => setMoveOpen(true)}
+                >
+                  Move student
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-      {passwordLink ? <PasswordLinkDialog url={passwordLink.url} email={passwordLink.email} onClose={() => setPasswordLink(null)} /> : null}
+      )}
 
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((item) => (
-          <button
-            key={item}
-            type="button"
-            className={`rounded-xl px-4 py-2 text-sm font-semibold ${tab === item ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700"}`}
-            onClick={() => setTab(item)}
-          >
-            {item}
-          </button>
-        ))}
-      </div>
-
-      {tab === "Overview" ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          <article className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-slate-800 shadow-sm">
-            <p className="text-[13px] text-slate-500">Attendance rate</p>
-            <p className="mt-1 text-[22px] font-bold leading-none">{profile.attendanceStats.rate == null ? "—" : `${profile.attendanceStats.rate}%`}</p>
-          </article>
-          <article className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-slate-800 shadow-sm">
-            <p className="text-[13px] text-slate-500">Fee balance</p>
-            <p className="mt-1 text-[22px] font-bold leading-none">{profile.fees.reduce((sum, fee) => sum + fee.balance, 0)}</p>
-          </article>
-          <article className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-3 text-slate-800 shadow-sm">
-            <p className="text-[13px] text-slate-500">Enrollments</p>
-            <p className="mt-1 text-[22px] font-bold leading-none">{profile.enrollments.length}</p>
-          </article>
-          {profile.alumniRecords.map((row) => (
-            <article key={row.createdAt} className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-800 shadow-sm sm:col-span-2 xl:col-span-3">
-              Alumni: {row.schoolName} · {row.fromLevel} · {row.reason}
-            </article>
-          ))}
-        </div>
-      ) : null}
-
-      {tab === "Academics" ? (
+      {(tab === "Subjects" || tab === "Results") ? (
         <div className="space-y-6">
+          {/* EXTERNAL EXAMINATION MARKS (OBTAINED ELSEWHERE) */}
+          {profile.externalExamRecords && profile.externalExamRecords.length > 0 && (
+            <section className="rounded-2xl border border-indigo-200 bg-indigo-50/50 p-5 shadow-xs space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-bold text-indigo-950">
+                    External Examination Marks (Obtained Elsewhere)
+                  </h3>
+                  <p className="mt-0.5 text-xs text-indigo-800">
+                    Verified examination results obtained at other institutions while away from this school. Kept distinct from official school examinations.
+                  </p>
+                </div>
+                <span className="rounded-full bg-indigo-100 px-3 py-1 font-mono text-xs font-bold text-indigo-900 ring-1 ring-indigo-200">
+                  {profile.externalExamRecords.length} Record{profile.externalExamRecords.length === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-indigo-100 bg-white shadow-2xs">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-indigo-50/60 text-indigo-950 border-b border-indigo-100 font-bold uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="px-4 py-2.5">Subject</th>
+                      <th className="px-3 py-2.5">Marks Obtained</th>
+                      <th className="px-3 py-2.5">Max Marks</th>
+                      <th className="px-3 py-2.5">Score</th>
+                      <th className="px-4 py-2.5">Origin Institution</th>
+                      <th className="px-3 py-2.5">Year / Period</th>
+                      <th className="px-3 py-2.5 text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-indigo-50 font-medium text-slate-800">
+                    {profile.externalExamRecords.map((rec) => {
+                      const max = rec.maxMarks ?? 100;
+                      const pct = max > 0 ? Math.round((rec.marksObtained / max) * 100) : null;
+                      return (
+                        <tr key={rec.id} className="hover:bg-indigo-50/30">
+                          <td className="px-4 py-2.5 font-bold text-slate-900">{rec.subject}</td>
+                          <td className="px-3 py-2.5 font-mono font-bold text-indigo-700">{rec.marksObtained}</td>
+                          <td className="px-3 py-2.5 font-mono text-slate-500">{max}</td>
+                          <td className="px-3 py-2.5 font-semibold text-slate-700">{pct !== null ? `${pct}%` : "—"}</td>
+                          <td className="px-4 py-2.5 text-slate-600">{rec.originSchool || "External Institution"}</td>
+                          <td className="px-3 py-2.5 text-slate-500">{rec.examYear || "—"}</td>
+                          <td className="px-3 py-2.5 text-right">
+                            <span
+                              className={`inline-block rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${
+                                rec.isVerified
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
+                            >
+                              {rec.isVerified ? "Verified" : "Unverified"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
           {profile.enrollments.map((enrollment) => {
             const exam = enrollment.examination;
             const markNames = [...new Set([...(exam?.term1.subjects ?? []), ...(exam?.term2.subjects ?? [])].map((subject) => subject.name))].sort((left, right) => left.localeCompare(right));
@@ -1817,7 +2565,7 @@ export function StudentProfilePage() {
         </div>
       ) : null}
 
-      {tab === "Finances" ? (
+      {tab === "Fees" ? (
         <div className="space-y-4">
           {profile.fees.map((fee) => (
             <article key={fee.id} className="rounded-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-sm">
@@ -1948,6 +2696,338 @@ export function StudentProfilePage() {
           </form>
         </div>
       ) : null}
+      {/* Edit Student Profile Modal */}
+      {editing ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-900/60 backdrop-blur-sm p-4 overflow-y-auto"
+          onClick={() => setEditing(false)}
+        >
+          <form
+            className="w-full max-w-2xl rounded-3xl bg-white p-7 shadow-2xl border border-slate-100"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              setError("");
+              setMessage("");
+              api(`/api/v1/students/${studentId}`, { method: "PATCH", body: JSON.stringify(editForm) })
+                .then(() => {
+                  setEditing(false);
+                  setMessage("Student details updated.");
+                  return loadProfile();
+                })
+                .catch((caught: unknown) =>
+                  setError(caught instanceof Error ? caught.message : "Could not update the student.")
+                );
+            }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900">Edit Student Profile</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Update personal details, contact info, and student portal login email.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditing(false)}
+                className="rounded-xl p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-700">
+                First Name *
+                <input
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  value={editForm.firstName}
+                  onChange={(event) => setEditForm({ ...editForm, firstName: event.target.value })}
+                  required
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">
+                Father Name *
+                <input
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  value={editForm.fatherName}
+                  onChange={(event) => setEditForm({ ...editForm, fatherName: event.target.value })}
+                  required
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">
+                Grandfather Name *
+                <input
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  value={editForm.grandfatherName}
+                  onChange={(event) => setEditForm({ ...editForm, grandfatherName: event.target.value })}
+                  required
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">
+                Portal Login Email
+                <input
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  type="email"
+                  placeholder="student@example.com"
+                  value={editForm.email}
+                  onChange={(event) => setEditForm({ ...editForm, email: event.target.value })}
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">
+                Phone Number (optional)
+                <input
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  value={editForm.phone}
+                  onChange={(event) => setEditForm({ ...editForm, phone: event.target.value })}
+                  placeholder="+252..."
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">
+                Gender *
+                <select
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  value={editForm.gender}
+                  onChange={(event) => setEditForm({ ...editForm, gender: event.target.value })}
+                >
+                  <option value="MALE">Male</option>
+                  <option value="FEMALE">Female</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-700">
+                Date of Birth *
+                <input
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  type="date"
+                  value={editForm.dateOfBirth}
+                  onChange={(event) => setEditForm({ ...editForm, dateOfBirth: event.target.value })}
+                  required
+                />
+              </label>
+              <label className="text-xs font-semibold text-slate-700">
+                NIRA National ID (optional)
+                <input
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-500 focus:bg-white focus:outline-none"
+                  value={editForm.nationalId}
+                  onChange={(event) => setEditForm({ ...editForm, nationalId: event.target.value })}
+                />
+              </label>
+            </div>
+
+            <div className="mt-7 flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-100 pt-5">
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                onClick={() => setEditing(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={inviteBusy}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
+                onClick={() => {
+                  const nextEmail = editForm.email.trim();
+                  if (!nextEmail) {
+                    setError("Enter a student login email first to generate a portal link.");
+                    return;
+                  }
+                  setError("");
+                  setMessage("");
+                  api(`/api/v1/students/${studentId}`, { method: "PATCH", body: JSON.stringify(editForm) })
+                    .then(async () => {
+                      setEditing(false);
+                      await issueStudentLink(nextEmail);
+                    })
+                    .catch((caught: unknown) =>
+                      setError(caught instanceof Error ? caught.message : "Could not update the student.")
+                    );
+                }}
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                {inviteBusy ? "Generating..." : "Save & Get Portal Link"}
+              </button>
+              <button
+                type="submit"
+                className="rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-500"
+              >
+                Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {/* Invite / Enter Student Email Modal */}
+      {inviteOpen ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4"
+          onClick={() => {
+            if (!inviteBusy) setInviteOpen(false);
+          }}
+        >
+          <form
+            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void issueStudentLink(inviteEmail.trim());
+            }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-600">Student Portal</p>
+                  <h3 className="mt-0.5 text-xl font-bold text-slate-950">Grant Student Portal Access</h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="rounded-full p-1 text-slate-400 hover:bg-slate-100"
+                onClick={() => setInviteOpen(false)}
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-4 text-sm leading-6 text-slate-600">
+              Enter an email address for this student so they can sign in to the Student Portal. A one-time password setup link will be generated next.
+            </p>
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Student Login Email
+              <input
+                className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 outline-none focus:border-blue-500"
+                type="email"
+                required
+                placeholder="student@example.com"
+                value={inviteEmail}
+                onChange={(event) => setInviteEmail(event.target.value)}
+              />
+            </label>
+            {inviteError ? <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{inviteError}</p> : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                onClick={() => setInviteOpen(false)}
+                disabled={inviteBusy}
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                disabled={inviteBusy}
+              >
+                {inviteBusy ? "Saving..." : "Save email and create link"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {/* One-time Password Link Dialog */}
+      {passwordLink ? (
+        <PasswordLinkDialog
+          url={passwordLink.url}
+          email={passwordLink.email}
+          onClose={() => setPasswordLink(null)}
+        />
+      ) : null}
+
+      {/* Move Student Confirmation Modal */}
+      {moveOpen && profile.placement ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/55 p-4"
+          onClick={() => {
+            if (!movingStudent) setMoveOpen(false);
+          }}
+        >
+          <section
+            className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h3 className="text-lg font-bold text-slate-950">Confirm section move</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Move <span className="font-semibold text-slate-900">{fullName}</span> to{" "}
+              <span className="font-semibold text-slate-900">
+                {profile.placement.sections.find((s) => s.id === placementSection)?.label ?? "the selected section"}
+              </span>
+              ?
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                disabled={movingStudent}
+                onClick={() => setMoveOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                disabled={movingStudent}
+                onClick={() => {
+                  setMovingStudent(true);
+                  setError("");
+                  api(`/api/v1/students/${studentId}/placement`, {
+                    method: "POST",
+                    body: JSON.stringify({ sectionId: placementSection }),
+                  })
+                    .then(() => {
+                      setMoveOpen(false);
+                      setPlacementSection("");
+                      setMessage("Student moved.");
+                      return loadProfile();
+                    })
+                    .catch((caught: unknown) =>
+                      setError(caught instanceof Error ? caught.message : "Could not move the student.")
+                    )
+                    .finally(() => setMovingStudent(false));
+                }}
+              >
+                {movingStudent ? "Moving…" : "Move student"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {/* Toggle Student Status ConfirmModal */}
+      <ConfirmModal
+        isOpen={toggleOpen}
+        onClose={() => setToggleOpen(false)}
+        onConfirm={handleConfirmToggleProfile}
+        title={profile.status === "ACTIVE" ? "Deactivate Student" : "Activate Student"}
+        targetName={`${profile.firstName} ${profile.fatherName}`}
+        targetType="Student / Arday"
+        description={
+          profile.status === "ACTIVE"
+            ? `Ma hubtaa inaad joojiso (deactivate) xaaladda ardayga ${profile.firstName} ${profile.fatherName}?`
+            : `Ma hubtaa inaad hawlgeliso (activate) ardayga ${profile.firstName} ${profile.fatherName}?`
+        }
+        confirmText={profile.status === "ACTIVE" ? "Jooji Ardayga" : "Hawlgeli"}
+        cancelText="Ka Noqo"
+        isDestructive={profile.status === "ACTIVE"}
+      />
+
+      {/* Delete Student ConfirmModal */}
+      <ConfirmModal
+        isOpen={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleConfirmDeleteProfile}
+        title="Digniin Culus: Tirtiridda Ardayga"
+        targetName={`${profile.firstName} ${profile.fatherName}`}
+        targetType="Student / Arday"
+        description={`Ma hubtaa inaad tirtirto ardayga (${profile.firstName} ${profile.fatherName})? Dhammaan taariikhda galitaanka fasallada, xaadirinta, iyo natiijooyinka imtixaanaadka waa la tirtiri doonaa. Tallaabadan dib looma soo celin karo.`}
+        confirmText="Haa, Tirtir Ardayga"
+        cancelText="Ka Noqo"
+        isDestructive={true}
+        requireKeyword="DELETE"
+      />
     </div>
   );
 }

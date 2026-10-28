@@ -102,3 +102,25 @@ export function studentPhotoPath(studentId: string, photoUrl: string | null, pho
   if (photoStorageKey) return `/api/v1/students/${studentId}/photo`;
   return null;
 }
+
+export async function storeUserPhoto(userId: string, buffer: Buffer, extension: string) {
+  if (cloudinaryEnabled()) {
+    const uploaded = await uploadCloudinary(buffer, `emp/users/${userId}`);
+    return {
+      photoUrl: uploaded.secure_url,
+      photoPublicId: uploaded.public_id,
+      photoStorageKey: null as string | null,
+    };
+  }
+  const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
+  const folder = path.join(process.cwd(), "storage", "photos", "users", userId);
+  await mkdir(folder, { recursive: true });
+  const fileName = `avatar-${hash}.${extension}`;
+  await writeFile(path.join(folder, fileName), buffer);
+  return {
+    photoUrl: `/api/v1/auth/profile/photo/${userId}`,
+    photoPublicId: null as string | null,
+    photoStorageKey: path.posix.join("photos", "users", userId, fileName),
+  };
+}
+

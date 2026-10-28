@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, BookOpen, Check, GraduationCap, Mail, Pencil, Phone, Plus, Trash2, UserCheck, UserRound, UsersRound } from "lucide-react";
-import { api } from "../lib/api";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowLeft, BookOpen, Check, GraduationCap, Mail, Pencil, Phone, Plus, Trash2, UserCheck, UserRound, UsersRound, ShieldAlert, Eye } from "lucide-react";
+import { api, type SessionUser } from "../lib/api";
 import { PasswordLinkDialog, passwordLinkUrl } from "../components/PasswordLinkDialog";
 import { Avatar, DataTable, FilterBar, avatarTone, filterInputClass, initials } from "../components/PeopleList";
+import { ConfirmModal } from "../components/ConfirmModal";
 
 type Teacher = {
   id: string;
@@ -56,6 +57,43 @@ export function TeachersPage() {
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [assignFilter, setAssignFilter] = useState("ALL");
+  const [deleteTeacher, setDeleteTeacher] = useState<Teacher | null>(null);
+  const [toggleTeacher, setToggleTeacher] = useState<Teacher | null>(null);
+  const [deleteScope, setDeleteScope] = useState<"SCHOOL_ONLY" | "ALL_ORGANIZATION">("SCHOOL_ONLY");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    api<SessionUser>("/api/v1/auth/me")
+      .then((u) => setIsSuperAdmin(u.role === "SUPER_ADMIN" || Boolean(u.actingFromSuperAdmin)))
+      .catch(() => {});
+  }, []);
+
+  async function handleConfirmDelete() {
+    if (!deleteTeacher) return;
+    setError("");
+    try {
+      await api(`/api/v1/teachers/${deleteTeacher.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ scope: deleteScope }),
+      });
+      setDeleteTeacher(null);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete teacher.");
+    }
+  }
+
+  async function handleConfirmToggle() {
+    if (!toggleTeacher) return;
+    setError("");
+    try {
+      await api(`/api/v1/teachers/${toggleTeacher.id}/toggle-status`, { method: "POST" });
+      setToggleTeacher(null);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not toggle teacher status.");
+    }
+  }
 
   async function load() {
     const [teacherRows, years] = await Promise.all([
@@ -309,18 +347,78 @@ export function TeachersPage() {
                 </span>
               </td>
               <td className="px-4 py-3 text-right">
-                <Link
-                  className="rounded-lg bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-100"
-                  to={`/school/teachers/${teacher.id}`}
-                >
-                  View
-                </Link>
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setToggleTeacher(teacher)}
+                    className={`p-1.5 rounded-lg border border-slate-200 transition ${
+                      teacher.isActive ? "text-amber-600 hover:bg-amber-50" : "text-emerald-600 hover:bg-emerald-50"
+                    }`}
+                    title={teacher.isActive ? "Deactivate Teacher" : "Activate Teacher"}
+                  >
+                    <ShieldAlert className="h-3.5 w-3.5" />
+                  </button>
+                  <Link
+                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-blue-600 hover:border-blue-300 transition"
+                    to={`/school/teachers/${teacher.id}`}
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    View
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteTeacher(teacher);
+                      setDeleteScope("SCHOOL_ONLY");
+                    }}
+                    className="p-1.5 rounded-lg border border-slate-200 bg-white text-rose-500 hover:bg-rose-50 hover:border-rose-200 transition"
+                    title="Delete Teacher"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </td>
             </tr>
           </Fragment>
         ))}
         </DataTable>
       </div>
+
+      {/* Toggle Teacher Status ConfirmModal */}
+      <ConfirmModal
+        isOpen={Boolean(toggleTeacher)}
+        onClose={() => setToggleTeacher(null)}
+        onConfirm={handleConfirmToggle}
+        title={toggleTeacher?.isActive ? "Deactivate Teacher" : "Activate Teacher"}
+        targetName={toggleTeacher?.name}
+        targetType="Teacher / Macallin"
+        description={
+          toggleTeacher?.isActive
+            ? `Ma hubtaa inaad joojiso (deactivate) xaaladda macallinka ${toggleTeacher?.name}? Macallinku ma awoodi doono inuu galo barta macallimiinta.`
+            : `Ma hubtaa inaad hawlgeliso (activate) macallinka ${toggleTeacher?.name}?`
+        }
+        confirmText={toggleTeacher?.isActive ? "Jooji Macallinka" : "Hawlgeli"}
+        cancelText="Ka Noqo"
+        isDestructive={toggleTeacher?.isActive}
+      />
+
+      {/* Delete Teacher ConfirmModal */}
+      <ConfirmModal
+        isOpen={Boolean(deleteTeacher)}
+        onClose={() => setDeleteTeacher(null)}
+        onConfirm={handleConfirmDelete}
+        title="Digniin Culus: Tirtiridda Macallinka"
+        targetName={deleteTeacher?.name}
+        targetType="Teacher / Macallin"
+        description={`Ma hubtaa inaad tirtirto macallinka (${deleteTeacher?.name})? Dhammaan xilsaarka maadooyinka iyo fasallada ee dugsigan waa la tirtiri doonaa.`}
+        confirmText="Haa, Tirtir Macallinka"
+        cancelText="Ka Noqo"
+        isDestructive={true}
+        requireKeyword="DELETE"
+        showMultiSchoolScope={isSuperAdmin}
+        scope={deleteScope}
+        onScopeChange={setDeleteScope}
+      />
     </div>
   );
 }
@@ -369,6 +467,7 @@ function factDate(value: string | null) {
 
 export function TeacherProfilePage() {
   const { teacherId } = useParams();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<TeacherProfile | null>(null);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
@@ -385,6 +484,42 @@ export function TeacherProfilePage() {
   const [assigning, setAssigning] = useState(false);
   const [notice, setNotice] = useState("");
   const [passwordLink, setPasswordLink] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [toggleOpen, setToggleOpen] = useState(false);
+  const [deleteScope, setDeleteScope] = useState<"SCHOOL_ONLY" | "ALL_ORGANIZATION">("SCHOOL_ONLY");
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    api<SessionUser>("/api/v1/auth/me")
+      .then((u) => setIsSuperAdmin(u.role === "SUPER_ADMIN" || Boolean(u.actingFromSuperAdmin)))
+      .catch(() => {});
+  }, []);
+
+  async function handleConfirmDelete() {
+    if (!profile) return;
+    setError("");
+    try {
+      await api(`/api/v1/teachers/${profile.id}`, {
+        method: "DELETE",
+        body: JSON.stringify({ scope: deleteScope }),
+      });
+      navigate("/school/teachers");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete teacher.");
+    }
+  }
+
+  async function handleConfirmToggle() {
+    if (!profile) return;
+    setError("");
+    try {
+      await api(`/api/v1/teachers/${profile.id}/toggle-status`, { method: "POST" });
+      setToggleOpen(false);
+      await loadProfile();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not toggle teacher status.");
+    }
+  }
 
   async function loadProfile() {
     if (!teacherId) return;
@@ -523,7 +658,7 @@ export function TeacherProfilePage() {
           <p className="text-sm text-slate-400">Teachers › Teacher Profile</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-950">Teacher Profile</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link to="/school/teachers" className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#2563eb]">
             <ArrowLeft className="h-4 w-4" /> Back to Teachers
           </Link>
@@ -536,6 +671,27 @@ export function TeacherProfilePage() {
               .catch((caught: unknown) => setError(caught instanceof Error ? caught.message : "Could not update login access."));
           }}>
             {profile.hasLogin ? "Reset password" : "Invite login"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setToggleOpen(true)}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition ${
+              profile.isActive ? "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100" : "border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+            }`}
+          >
+            <ShieldAlert className="h-4 w-4" />
+            {profile.isActive ? "Deactivate" : "Activate"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDeleteScope("SCHOOL_ONLY");
+              setDeleteOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 shadow-sm transition"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
           </button>
         </div>
       </div>
@@ -678,6 +834,42 @@ export function TeacherProfilePage() {
           </form>
         </div>
       ) : null}
+
+      {/* Toggle Teacher Status ConfirmModal */}
+      <ConfirmModal
+        isOpen={toggleOpen}
+        onClose={() => setToggleOpen(false)}
+        onConfirm={handleConfirmToggle}
+        title={profile.isActive ? "Deactivate Teacher" : "Activate Teacher"}
+        targetName={profile.name}
+        targetType="Teacher / Macallin"
+        description={
+          profile.isActive
+            ? `Ma hubtaa inaad joojiso (deactivate) xaaladda macallinka ${profile.name}? Macallinku ma awoodi doono inuu galo barta macallimiinta.`
+            : `Ma hubtaa inaad hawlgeliso (activate) macallinka ${profile.name}?`
+        }
+        confirmText={profile.isActive ? "Jooji Macallinka" : "Hawlgeli"}
+        cancelText="Ka Noqo"
+        isDestructive={profile.isActive}
+      />
+
+      {/* Delete Teacher ConfirmModal */}
+      <ConfirmModal
+        isOpen={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Digniin Culus: Tirtiridda Macallinka"
+        targetName={profile.name}
+        targetType="Teacher / Macallin"
+        description={`Ma hubtaa inaad tirtirto macallinka (${profile.name})? Dhammaan xilsaarka maadooyinka iyo fasallada ee dugsigan waa la tirtiri doonaa.`}
+        confirmText="Haa, Tirtir Macallinka"
+        cancelText="Ka Noqo"
+        isDestructive={true}
+        requireKeyword="DELETE"
+        showMultiSchoolScope={isSuperAdmin}
+        scope={deleteScope}
+        onScopeChange={setDeleteScope}
+      />
     </div>
   );
 }

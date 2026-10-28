@@ -104,6 +104,8 @@ model School {
   registeredGuardians Guardian[]
   announcements  Announcement[]
   promotionBatches PromotionBatch[]
+  conductReports ConductReport[]
+  externalTransfers ExternalTransfer[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -264,6 +266,9 @@ model Student {
   guardians        StudentGuardian[]
   alumniRecords    AlumniRecord[]
   documents        StudentDocument[]
+  conductReports   ConductReport[]
+  externalTransfers ExternalTransfer[]
+  externalExamRecords ExternalExamRecord[]
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 }
@@ -424,9 +429,12 @@ model Enrollment {
   results        SubjectResult[]
   attendance     AttendanceRecord[]
   fees           StudentFee[]
+  conductReports ConductReport[]
+  externalTransfer ExternalTransfer?
+  externalExamRecords ExternalExamRecord[]
   createdAt      DateTime         @default(now())
 
-  @@unique([studentId, academicYearId])
+  @@index([studentId, academicYearId])
   @@unique([schoolId, studentNumber])
   @@unique([sectionId, rollNumber])
 }
@@ -494,6 +502,7 @@ model TransferRequest {
   fromSchoolId     String
   toSchoolId       String
   fromEnrollmentId String
+  newEnrollmentId  String?
   toAcademicYearId String?
   toSectionId      String?
   status           TransferStatus @default(PENDING)
@@ -501,8 +510,73 @@ model TransferRequest {
   rejectReason     String?
   requestedByUserId String
   decidedByUserId  String?
+  decidedAt        DateTime?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
+}
+
+enum ExternalTransferStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REVERSED
+}
+
+model ExternalTransfer {
+  id                    String                 @id @default(cuid())
+  schoolId              String
+  studentId             String
+  enrollmentId          String                 @unique
+  destinationSchoolName String?
+  reason                String?
+  certificateNumber     String                 @unique
+  status                ExternalTransferStatus @default(PENDING)
+  initiatedByUserId     String
+  confirmedByUserId     String?
+  reversedByUserId      String?
+  transcriptDownloaded  Boolean                @default(false)
+  tcDownloaded          Boolean                @default(false)
+  confirmedAt           DateTime?
+  cancelledAt           DateTime?
+  cancelReason          String?
+  reversedAt            DateTime?
+  reversalReason        String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  school          School     @relation(fields: [schoolId], references: [id])
+  student         Student    @relation(fields: [studentId], references: [id])
+  enrollment      Enrollment @relation(fields: [enrollmentId], references: [id])
+  initiatedByUser User       @relation("ExternalTransferInitiator", fields: [initiatedByUserId], references: [id])
+  confirmedByUser User?      @relation("ExternalTransferConfirmer", fields: [confirmedByUserId], references: [id])
+  reversedByUser  User?      @relation("ExternalTransferReverser", fields: [reversedByUserId], references: [id])
+
+  @@index([schoolId, status])
+  @@index([studentId])
+}
+
+model ExternalExamRecord {
+  id               String      @id @default(cuid())
+  studentId        String
+  enrollmentId     String?
+  originSchool     String?
+  examYear         String?
+  gradeOrClass     String?
+  subject          String
+  marksObtained    Float
+  maxMarks         Float?      @default(100)
+  isVerified       Boolean     @default(false)
+  verifiedByUserId String?
+  verifiedAt       DateTime?
+  notes            String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  student          Student     @relation(fields: [studentId], references: [id])
+  enrollment       Enrollment? @relation(fields: [enrollmentId], references: [id])
+
+  @@index([studentId])
+  @@index([enrollmentId])
 }
 
 model SectionMove {
@@ -664,6 +738,8 @@ model User {
   phone        String?
   schoolId     String?
   personKey    String?
+  photoUrl     String?
+  photoStorageKey String?
   isDemo       Boolean       @default(true)
   school       School?       @relation(fields: [schoolId], references: [id])
   refreshTokens RefreshToken[]
@@ -671,6 +747,12 @@ model User {
   staffMember   StaffMember?
   guardian      Guardian?
   invites       InviteToken[]
+  reportedConduct ConductReport[] @relation("ConductReportReporter")
+  assignedConduct ConductReport[] @relation("ConductReportAssignee")
+  conductActions ConductAction[]
+  initiatedExternalTransfers ExternalTransfer[] @relation("ExternalTransferInitiator")
+  confirmedExternalTransfers ExternalTransfer[] @relation("ExternalTransferConfirmer")
+  reversedExternalTransfers  ExternalTransfer[] @relation("ExternalTransferReverser")
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
@@ -705,6 +787,7 @@ model Teacher {
   user           User                @relation(fields: [userId], references: [id])
   assignments    TeacherAssignment[]
   schools        TeacherSchool[]
+  conductReports ConductReport[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 }
@@ -750,4 +833,120 @@ model RefreshToken {
   revokedAt DateTime?
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime  @default(now())
+}
+
+enum ConductCategory {
+  CLASSROOM_DISRUPTION
+  REPEATED_LATENESS
+  UNEXCUSED_ABSENCE
+  PEER_CONFLICT
+  ACADEMIC_DISHONESTY
+  PROPERTY_DAMAGE
+  POSITIVE_CONDUCT
+  WELFARE_CONCERN
+  SAFEGUARDING
+  OTHER
+}
+
+enum ConductSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum ConductStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  ACTION_REQUIRED
+  RESOLVED
+  CLOSED
+}
+
+enum ConductVisibilityLevel {
+  RESTRICTED_ADMIN_ONLY
+  STAFF_INTERNAL
+  PARENT_APPROVED
+  STUDENT_APPROVED
+  COMMUNITY_PUBLISHED
+}
+
+model ConductReport {
+  id                    String                 @id @default(cuid())
+  reportNumber          String
+  schoolId              String
+  studentId             String
+  enrollmentId          String
+  reporterTeacherId     String?
+  reporterUserId        String
+  category              ConductCategory
+  severity              ConductSeverity        @default(LOW)
+  isPositive            Boolean                @default(false)
+  incidentDate          DateTime
+  location              String?
+  title                 String
+  description           String
+  actionsTakenByTeacher String?
+  status                ConductStatus          @default(SUBMITTED)
+  assignedToUserId      String?
+  resolutionNotes       String?
+  resolvedAt            DateTime?
+  requestedVisibility   ConductVisibilityLevel @default(STAFF_INTERNAL)
+  visibilityLevel       ConductVisibilityLevel @default(RESTRICTED_ADMIN_ONLY)
+  isParentVisible       Boolean                @default(false)
+  isStudentVisible      Boolean                @default(false)
+  isSensitive           Boolean                @default(false)
+
+  school                School                 @relation(fields: [schoolId], references: [id])
+  student               Student                @relation(fields: [studentId], references: [id])
+  enrollment            Enrollment             @relation(fields: [enrollmentId], references: [id])
+  reporterUser          User                   @relation("ConductReportReporter", fields: [reporterUserId], references: [id])
+  reporterTeacher       Teacher?               @relation(fields: [reporterTeacherId], references: [id])
+  assignedUser          User?                  @relation("ConductReportAssignee", fields: [assignedToUserId], references: [id])
+  actions               ConductAction[]
+  attachments           ConductAttachment[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  @@unique([schoolId, reportNumber])
+  @@index([schoolId, status])
+  @@index([studentId, isParentVisible])
+  @@index([studentId, isStudentVisible])
+  @@index([reporterUserId])
+}
+
+model ConductAction {
+  id             String         @id @default(cuid())
+  reportId       String
+  actorUserId    String
+  actionType     String
+  previousStatus ConductStatus?
+  newStatus      ConductStatus?
+  comment        String?
+  isInternalOnly Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+
+  report         ConductReport  @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  actorUser      User           @relation(fields: [actorUserId], references: [id])
+
+  @@index([reportId, createdAt])
+}
+
+model ConductAttachment {
+  id               String        @id @default(cuid())
+  reportId         String
+  title            String
+  originalName     String
+  storageKey       String        @unique
+  mimeType         String
+  sizeBytes        Int
+  isParentVisible  Boolean       @default(false)
+  isStudentVisible Boolean       @default(false)
+  uploadedByUserId String
+  createdAt        DateTime      @default(now())
+
+  report           ConductReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
 }

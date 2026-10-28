@@ -30,6 +30,9 @@ import { ResultsBoardPage } from "./pages/MarksPages";
 import { AnnouncementsInboxPage, SchoolAnnouncementsPage } from "./pages/AnnouncementPages";
 import { StaffPage, StaffProfilePage } from "./pages/StaffPage";
 import { SetPasswordPage, TeacherProfilePage, TeachersPage } from "./pages/TeacherPages";
+import { TeacherConductPage } from "./pages/TeacherConductPage";
+import { SchoolConductPage } from "./pages/SchoolConductPage";
+import { StudentConductPage } from "./pages/StudentConductPage";
 
 export function App() {
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -56,11 +59,11 @@ export function App() {
       <Route path="/school/login" element={<PortalLoginPage portal="school" onSuccess={setUser} />} />
       <Route path="/set-password" element={<SetPasswordPage />} />
       <Route path="/set-password/:token" element={<SetPasswordPage />} />
-      <Route path="/superadmin/dashboard" element={<Protected user={user} role="SUPER_ADMIN" title="Super Admin dashboard"><SuperAdminHome /></Protected>} />
-      <Route path="/school/dashboard" element={<Protected user={user} role="SCHOOL_ADMIN" title="School dashboard"><SchoolDashboard /></Protected>} />
-      <Route path="/school/reports" element={<Protected user={user} role="SCHOOL_ADMIN" title="Reports"><ReportsPage /></Protected>} />
-      <Route path="/school/search" element={<Protected user={user} role="SCHOOL_ADMIN" title="Search"><SearchPage /></Protected>} />
-      <Route path="/school/audit" element={<Protected user={user} role="SCHOOL_ADMIN" title="Audit"><AuditPage /></Protected>} />
+      <Route path="/superadmin/dashboard" element={<Protected user={user} onUserUpdated={setUser} role="SUPER_ADMIN" title="Super Admin dashboard"><SuperAdminHome user={user!} /></Protected>} />
+      <Route path="/school/dashboard" element={<Protected user={user} onUserUpdated={setUser} role="SCHOOL_ADMIN" title="Dashboard"><SchoolDashboard user={user!} /></Protected>} />
+      <Route path="/school/reports" element={<Protected user={user} onUserUpdated={setUser} role="SCHOOL_ADMIN" title="Reports"><ReportsPage /></Protected>} />
+      <Route path="/school/search" element={<Protected user={user} onUserUpdated={setUser} role="SCHOOL_ADMIN" title="Search"><SearchPage /></Protected>} />
+      <Route path="/school/audit" element={<Protected user={user} onUserUpdated={setUser} role="SCHOOL_ADMIN" title="Audit"><AuditPage /></Protected>} />
       <Route path="/school/academic-years" element={<Protected user={user} role="SCHOOL_ADMIN" title="Academic years"><AcademicYearsPage /></Protected>} />
       <Route path="/school/academic-years/:academicYearId" element={<Protected user={user} role="SCHOOL_ADMIN" title="Classes"><AcademicYearPage /></Protected>} />
       <Route path="/school/classes/:classGroupId" element={<Protected user={user} role="SCHOOL_ADMIN" title="Sections"><ClassGroupPage /></Protected>} />
@@ -91,7 +94,9 @@ export function App() {
       <Route path="/teacher/exams" element={<Protected user={user} role="TEACHER" title="Exams & Results"><TeacherExamsPage /></Protected>} />
       <Route path="/teacher/marks" element={<Protected user={user} role="TEACHER" title="Marks Entry"><TeacherMarksPage /></Protected>} />
       <Route path="/teacher/attendance" element={<Protected user={user} role="TEACHER" title="Attendance"><AttendancePage /></Protected>} />
+      <Route path="/teacher/conduct" element={<Protected user={user} role="TEACHER" title="Conduct & Welfare"><TeacherConductPage /></Protected>} />
       <Route path="/school/attendance" element={<Protected user={user} role="SCHOOL_ADMIN" title="Attendance"><SchoolAttendanceDashboard /></Protected>} />
+      <Route path="/school/conduct" element={<Protected user={user} role="SCHOOL_ADMIN" title="Conduct & Welfare"><SchoolConductPage /></Protected>} />
       <Route path="/accountant/dashboard" element={<Protected user={user} role="ACCOUNTANT" title="Accountant dashboard"><AccountantDashboard /></Protected>} />
       <Route path="/accountant/fees" element={<Protected user={user} role="ACCOUNTANT" title="Fees"><FeesPage /></Protected>} />
       <Route path="/staff/dashboard" element={<Protected user={user} role="STAFF" title="Staff dashboard">{user ? <RoleHome user={user} /> : null}</Protected>} />
@@ -106,6 +111,7 @@ export function App() {
       <Route path="/accountant/announcements" element={<Protected user={user} role="ACCOUNTANT" title="Announcements"><AnnouncementsInboxPage /></Protected>} />
       <Route path="/staff/announcements" element={<Protected user={user} role="STAFF" title="Announcements"><AnnouncementsInboxPage /></Protected>} />
       <Route path="/student/dashboard" element={<Protected user={user} role="STUDENT" title="Dashboard"><StudentResultsPage /></Protected>} />
+      <Route path="/student/conduct" element={<Protected user={user} role="STUDENT" title="Conduct & Merits"><StudentConductPage /></Protected>} />
       <Route path="/student/attendance" element={<Protected user={user} role="STUDENT" title="Attendance"><StudentAttendancePage /></Protected>} />
       <Route path="/student/announcements" element={<Protected user={user} role="STUDENT" title="Announcements"><AnnouncementsInboxPage /></Protected>} />
       <Route path="/superadmin" element={<PortalIndex user={user} role="SUPER_ADMIN" to="/superadmin/dashboard" />} />
@@ -168,11 +174,13 @@ function Protected({
   user,
   role,
   title,
+  onUserUpdated,
   children,
 }: {
   user: SessionUser | null;
   role: string;
   title: string;
+  onUserUpdated?: (user: SessionUser) => void;
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
@@ -182,6 +190,7 @@ function Protected({
     <Shell
       user={user}
       title={title}
+      onUserUpdated={onUserUpdated}
       onLogout={async () => {
         await api("/api/v1/auth/logout", { method: "POST" });
         navigate(user.role === "SUPER_ADMIN" ? "/super-admin/login" : "/login");

@@ -12,6 +12,8 @@ export type AuthUser = {
   email: string;
   firstName: string;
   lastName: string;
+  phone?: string | null;
+  photoUrl?: string | null;
   status: string;
   /** True when a SUPER_ADMIN is temporarily working inside a school. */
   actingFromSuperAdmin?: boolean;
@@ -49,6 +51,8 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      phone: user.phone,
+      photoUrl: user.photoUrl,
       status: user.status,
       actingFromSuperAdmin,
     };

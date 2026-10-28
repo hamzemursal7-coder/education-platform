@@ -488,3 +488,78 @@ teachersRouter.post("/teachers/:id/access", async (req, res, next) => {
     next(error);
   }
 });
+
+teachersRouter.post("/teachers/:id/toggle-status", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const teacher = await prisma.teacher.findFirst({
+      where: { id: String(req.params.id), organizationId: school.organizationId, ...teacherAtSchool(school.id) },
+      include: { user: true },
+    });
+    if (!teacher) throw new HttpError(404, "Teacher was not found.");
+    const nextActive = !teacher.isActive;
+    await prisma.$transaction([
+      prisma.teacher.update({ where: { id: teacher.id }, data: { isActive: nextActive } }),
+      prisma.user.update({ where: { id: teacher.userId }, data: { status: nextActive ? "ACTIVE" : "DISABLED" } }),
+    ]);
+    res.json({ ok: true, isActive: nextActive });
+  } catch (error) {
+    next(error);
+  }
+});
+
+teachersRouter.delete("/teachers/:id", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const teacher = await prisma.teacher.findFirst({
+      where: { id: String(req.params.id), organizationId: school.organizationId, ...teacherAtSchool(school.id) },
+      include: {
+        schools: true,
+        assignments: true,
+        user: true,
+      },
+    });
+    if (!teacher) throw new HttpError(404, "Teacher was not found.");
+
+    const isSuperAdmin = req.authUser?.role === "SUPER_ADMIN" || req.authUser?.actingFromSuperAdmin;
+    const requestedScope = (req.body?.scope || req.query?.scope || "SCHOOL_ONLY") as string;
+    const isOrgWide = isSuperAdmin && requestedScope === "ALL_ORGANIZATION";
+
+    const otherSchools = teacher.schools.filter((ts) => ts.schoolId !== school.id);
+    const hasOtherSchools = otherSchools.length > 0;
+
+    if (!isOrgWide && hasOtherSchools) {
+      await prisma.$transaction(async (tx) => {
+        await tx.teacherAssignment.deleteMany({
+          where: { teacherId: teacher.id, schoolId: school.id },
+        });
+        await tx.teacherSchool.deleteMany({
+          where: { teacherId: teacher.id, schoolId: school.id },
+        });
+      });
+      res.json({
+        ok: true,
+        removedFromSchool: true,
+        message: `Teacher ${teacher.user.firstName} ${teacher.user.lastName} was removed from this school. Other school memberships were preserved.`,
+      });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.teacherAssignment.deleteMany({ where: { teacherId: teacher.id } });
+      await tx.teacherSchool.deleteMany({ where: { teacherId: teacher.id } });
+      await tx.inviteToken.deleteMany({ where: { userId: teacher.userId } });
+      await tx.teacher.delete({ where: { id: teacher.id } });
+      await tx.user.delete({ where: { id: teacher.userId } });
+    });
+
+    res.json({
+      ok: true,
+      deletedCompletely: true,
+      message: `Teacher ${teacher.user.firstName} ${teacher.user.lastName} was deleted.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+

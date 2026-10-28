@@ -4,6 +4,8 @@ dist/
 *.log
 .DS_Store
 coverage/
+*.sql
+*.tsbuildinfo
 api/storage/
 mobile/.dart_tool/
 mobile/.flutter-plugins-dependencies

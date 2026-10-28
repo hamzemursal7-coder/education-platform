@@ -688,7 +688,6 @@ attendanceRouter.get("/student/attendance", requireAuth, requireRole("STUDENT"),
       },
       include: {
         enrollments: {
-          where: user.schoolId ? { schoolId: user.schoolId } : {},
           include: {
             school: true,
             academicYear: true,

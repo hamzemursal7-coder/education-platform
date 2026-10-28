@@ -746,6 +746,11 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
         ],
       },
       include: {
+        externalTransfers: {
+          where: { status: "CONFIRMED" },
+          orderBy: { confirmedAt: "desc" },
+          take: 1,
+        },
         guardians: {
           include: {
             guardian: {
@@ -760,7 +765,6 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
           },
         },
         enrollments: {
-          where: user.schoolId ? { schoolId: user.schoolId } : {},
           include: {
             school: true,
             academicYear: true,
@@ -771,7 +775,7 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
               include: { examSubject: { include: { exam: true } } },
             },
           },
-          orderBy: { academicYear: { startDate: "desc" } },
+          orderBy: [{ academicYear: { startDate: "desc" } }, { createdAt: "desc" }],
         },
       },
     });
@@ -779,8 +783,17 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
       res.json(empty);
       return;
     }
+    const requestedEnrollmentId = typeof req.query.enrollmentId === "string" ? req.query.enrollmentId : "";
     const requestedYear = typeof req.query.academicYearId === "string" ? req.query.academicYearId : "";
-    const enrollment = student.enrollments.find((row) => row.academicYearId === requestedYear)
+    const activeEnrollment = student.enrollments.find((row) => row.status === "ACTIVE") ?? null;
+    const enrollment =
+      (requestedEnrollmentId ? student.enrollments.find((row) => row.id === requestedEnrollmentId) : undefined)
+      ?? (requestedYear
+        ? (student.enrollments.find((row) => row.academicYearId === requestedYear && row.status === "ACTIVE")
+          ?? student.enrollments.find((row) => row.id === requestedYear)
+          ?? student.enrollments.find((row) => row.academicYearId === requestedYear))
+        : undefined)
+      ?? activeEnrollment
       ?? student.enrollments.find((row) => row.academicYear.isCurrent)
       ?? student.enrollments[0];
     if (!enrollment) {
@@ -873,6 +886,21 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
       };
     });
     const overall = examination?.overall;
+    const latestTransfer = student.externalTransfers?.[0] ?? null;
+    const hasActiveEnrollment = Boolean(activeEnrollment);
+    const hasHistoricalTransfer =
+      student.enrollments.some((e) => e.status === "TRANSFERRED") || Boolean(latestTransfer);
+    const isTransferred = !hasActiveEnrollment && (student.status === "WITHDRAWN" || hasHistoricalTransfer);
+    const isReenrolled = hasActiveEnrollment && student.status === "ACTIVE" && hasHistoricalTransfer;
+    const reenrollmentMessage = isReenrolled
+      ? "Your re-enrollment has been approved. You can now access your current academic information and previous academic records."
+      : null;
+
+    const yearIdCounts = new Map<string, number>();
+    for (const row of student.enrollments) {
+      yearIdCounts.set(row.academicYearId, (yearIdCounts.get(row.academicYearId) ?? 0) + 1);
+    }
+
     res.json({
       student: {
         name: `${student.firstName} ${student.fatherName} ${student.grandfatherName}`.replace(/\s+/g, " ").trim(),
@@ -886,7 +914,18 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
         phone: student.phone ?? user.phone ?? null,
         nationalId: student.nationalId ?? null,
         gender: student.gender ?? null,
-        status: student.status ?? "ACTIVE",
+        status: isTransferred ? "TRANSFERRED" : (student.status ?? "ACTIVE"),
+        isTransferred,
+        isReenrolled,
+        reenrollmentMessage,
+        transferDetails: latestTransfer
+          ? {
+              destinationSchool: latestTransfer.destinationSchoolName ?? null,
+              certificateNumber: latestTransfer.certificateNumber,
+              transferredAt: latestTransfer.confirmedAt,
+              reason: latestTransfer.reason,
+            }
+          : null,
         rollNumber: enrollment.rollNumber,
         initials: `${student.firstName[0] ?? ""}${student.grandfatherName[0] ?? student.fatherName[0] ?? ""}`.toUpperCase(),
         guardians: (student.guardians ?? []).map((g) => ({
@@ -897,15 +936,26 @@ resultsRouter.get("/student/results", requireAuth, requireRole("STUDENT"), async
           nationalId: g.guardian.nationalId,
         })),
       },
-      years: student.enrollments.map((row) => ({
-        id: row.academicYearId,
-        name: row.academicYear.name,
-        isCurrent: row.academicYear.isCurrent,
-      })),
+      years: student.enrollments.map((row) => {
+        const hasMultipleSameYear = (yearIdCounts.get(row.academicYearId) ?? 0) > 1;
+        return {
+          id: hasMultipleSameYear ? row.id : row.academicYearId,
+          academicYearId: row.academicYearId,
+          enrollmentId: row.id,
+          name: hasMultipleSameYear
+            ? `${row.academicYear.name} (${row.school.name} · ${row.status === "ACTIVE" ? "Current" : "Previous"})`
+            : row.academicYear.name,
+          school: row.school.name,
+          status: row.status,
+          isCurrent: row.status === "ACTIVE" || (row.academicYear.isCurrent && !hasActiveEnrollment),
+        };
+      }),
       year: {
-        id: enrollment.academicYearId,
+        id: (yearIdCounts.get(enrollment.academicYearId) ?? 0) > 1 ? enrollment.id : enrollment.academicYearId,
+        academicYearId: enrollment.academicYearId,
+        enrollmentId: enrollment.id,
         name: enrollment.academicYear.name,
-        isCurrent: enrollment.academicYear.isCurrent,
+        isCurrent: enrollment.status === "ACTIVE" || (enrollment.academicYear.isCurrent && !hasActiveEnrollment),
         school: enrollment.school.name,
         level: levelLabel(enrollment.classGroup.level),
         section: enrollment.section.name,

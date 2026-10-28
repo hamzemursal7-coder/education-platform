@@ -206,3 +206,67 @@ staffRouter.post("/staff/:id/deactivate", async (req, res, next) => {
     next(error);
   }
 });
+
+staffRouter.post("/staff/:id/toggle-status", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const staff = await prisma.staffMember.findFirst({
+      where: { id: String(req.params.id), schoolId: school.id },
+      include: { user: true },
+    });
+    if (!staff) throw new HttpError(404, "Staff member was not found.");
+    const nextActive = !staff.isActive;
+    await prisma.$transaction([
+      prisma.staffMember.update({ where: { id: staff.id }, data: { isActive: nextActive } }),
+      prisma.user.update({ where: { id: staff.userId }, data: { status: nextActive ? "ACTIVE" : "DISABLED" } }),
+    ]);
+    res.json({ ok: true, isActive: nextActive });
+  } catch (error) {
+    next(error);
+  }
+});
+
+staffRouter.delete("/staff/:id", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const staff = await prisma.staffMember.findFirst({
+      where: { id: String(req.params.id), schoolId: school.id },
+      include: { user: true },
+    });
+    if (!staff) throw new HttpError(404, "Staff member was not found.");
+
+    const isSuperAdmin = req.authUser?.role === "SUPER_ADMIN" || req.authUser?.actingFromSuperAdmin;
+    const requestedScope = (req.body?.scope || req.query?.scope || "SCHOOL_ONLY") as string;
+    const isOrgWide = isSuperAdmin && requestedScope === "ALL_ORGANIZATION";
+
+    const otherStaffRecords = await prisma.staffMember.findMany({
+      where: { userId: staff.userId, schoolId: { not: school.id } },
+    });
+    const teacherRecords = await prisma.teacher.findMany({
+      where: { userId: staff.userId },
+    });
+    const hasOtherRoles = otherStaffRecords.length > 0 || teacherRecords.length > 0;
+
+    if (!isOrgWide && hasOtherRoles) {
+      await prisma.$transaction(async (tx) => {
+        await tx.staffMember.delete({ where: { id: staff.id } });
+      });
+      res.json({
+        ok: true,
+        removedFromSchool: true,
+        message: `Staff member was removed from this school. Other school memberships were preserved.`,
+      });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.inviteToken.deleteMany({ where: { userId: staff.userId } });
+      await tx.staffMember.deleteMany({ where: { userId: staff.userId } });
+      await tx.user.delete({ where: { id: staff.userId } });
+    });
+
+    res.json({ ok: true, deletedCompletely: true, message: `Staff member was deleted.` });
+  } catch (error) {
+    next(error);
+  }
+});

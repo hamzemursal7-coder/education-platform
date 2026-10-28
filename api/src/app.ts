@@ -23,6 +23,7 @@ import { staffRouter } from "./routes/staff.js";
 import { schoolSettingsRouter } from "./routes/schoolSettings.js";
 import { superadminRouter } from "./routes/superadmin.js";
 import { transfersRouter } from "./routes/transfers.js";
+import { conductRouter } from "./routes/conduct.js";
 
 export function createApp() {
   const app = express();
@@ -58,6 +59,7 @@ export function createApp() {
   app.use("/api/v1", auditRouter);
   app.use("/api/v1", schoolSettingsRouter);
   app.use("/api/v1", superadminRouter);
+  app.use("/api/v1", conductRouter);
   app.use(errorHandler);
   return app;
 }

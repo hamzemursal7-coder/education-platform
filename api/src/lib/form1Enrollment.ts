@@ -26,6 +26,22 @@ async function nextStudentNumber(tx: Prisma.TransactionClient, schoolId: string)
   return String(rows[0].value).padStart(5, "0");
 }
 
+async function nextRollNumber(tx: Prisma.TransactionClient, sectionId: string): Promise<number> {
+  const key = `roll:${sectionId}`;
+  const floorRows = await tx.$queryRaw<Array<{ max: number }>>`
+    SELECT COALESCE(MAX("rollNumber"), 0) AS max
+    FROM "Enrollment"
+    WHERE "sectionId" = ${sectionId}
+  `;
+  const floor = Number(floorRows[0]?.max ?? 0);
+  const rows = await tx.$queryRaw<Array<{ value: number }>>`
+    INSERT INTO "IdSequence" ("id", "value") VALUES (${key}, ${floor + 1})
+    ON CONFLICT ("id") DO UPDATE SET "value" = GREATEST("IdSequence"."value", ${floor}) + 1
+    RETURNING "value"
+  `;
+  return Number(rows[0].value);
+}
+
 export async function enrollClass8InForm1(
   tx: Prisma.TransactionClient,
   input: {
@@ -38,12 +54,12 @@ export async function enrollClass8InForm1(
 ) {
   const active = await tx.enrollment.findFirst({ where: { studentId: input.student.id, status: "ACTIVE" } });
   if (active) throw new HttpError(409, "This student already has an active enrollment.");
-  const existing = await tx.enrollment.findUnique({
-    where: { studentId_academicYearId: { studentId: input.student.id, academicYearId: input.academicYearId } },
+  const existing = await tx.enrollment.findFirst({
+    where: { studentId: input.student.id, academicYearId: input.academicYearId, status: { not: "TRANSFERRED" } },
   });
   if (existing) throw new HttpError(409, "This student already has an enrollment in that year.");
   const studentNumber = await nextStudentNumber(tx, input.destinationSchoolId);
-  const rollNumber = await nextValue(tx, `roll:${input.section.id}`);
+  const rollNumber = await nextRollNumber(tx, input.section.id);
   let secondaryPermanentId = input.student.secondaryPermanentId;
   if (!secondaryPermanentId) {
     const yearMark = String(new Date().getFullYear()).slice(2);

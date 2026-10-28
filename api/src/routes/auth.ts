@@ -1,7 +1,11 @@
+import { createReadStream } from "node:fs";
+import path from "node:path";
+import multer from "multer";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { hashPassword, verifyPassword } from "../lib/passwords.js";
+import { assertPhotoSize, detectImage, storeUserPhoto } from "../lib/photos.js";
 import { clearSession, clearSharedSession, newSessionKey, readRefreshToken, sessionKeyFrom, writeSession } from "../lib/sessionCookie.js";
 import { hashRefreshToken, newRefreshToken, signAccessToken } from "../lib/tokens.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -189,11 +193,173 @@ authRouter.post("/logout", async (req, res, next) => {
 
 authRouter.get("/me", requireAuth, async (req, res) => {
   const user = req.authUser!;
-  const school = user.schoolId
-    ? await prisma.school.findUnique({
-        where: { id: user.schoolId },
+  const fullUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      id: true,
+      email: true,
+      role: true,
+      firstName: true,
+      lastName: true,
+      phone: true,
+      photoUrl: true,
+      schoolId: true,
+      status: true,
+      school: {
         select: { id: true, name: true, code: true, type: true },
-      })
-    : null;
-  res.json({ ...user, school });
+      },
+    },
+  });
+  res.json({
+    ...user,
+    photoUrl: fullUser?.photoUrl ?? null,
+    phone: fullUser?.phone ?? null,
+    school: fullUser?.school ?? null,
+  });
 });
+
+const updateProfileSchema = z.object({
+  firstName: z.string().trim().min(1).max(50).optional(),
+  lastName: z.string().trim().min(1).max(50).optional(),
+  phone: z.string().trim().max(30).optional().nullable(),
+  currentPassword: z.string().optional(),
+  newPassword: z.string().min(8).optional(),
+});
+
+authRouter.get("/profile", requireAuth, async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.authUser!.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        photoUrl: true,
+        schoolId: true,
+        school: {
+          select: { id: true, name: true, code: true, type: true },
+        },
+      },
+    });
+    if (!user) throw new HttpError(404, "User not found.");
+    res.json(user);
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.patch("/profile", requireAuth, async (req, res, next) => {
+  try {
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.errors.map((e) => e.message).join(", "));
+    }
+
+    const { firstName, lastName, phone, currentPassword, newPassword } = parsed.data;
+    const user = await prisma.user.findUnique({ where: { id: req.authUser!.id } });
+    if (!user) throw new HttpError(404, "User not found.");
+
+    let newPasswordHash: string | undefined;
+    if (newPassword) {
+      if (!currentPassword) {
+        throw new HttpError(400, "Current password is required to set a new password.");
+      }
+      if (user.passwordHash) {
+        const matches = await verifyPassword(user.passwordHash, currentPassword);
+        if (!matches) {
+          throw new HttpError(400, "Current password is not correct.");
+        }
+      }
+      newPasswordHash = await hashPassword(newPassword);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        ...(firstName ? { firstName } : {}),
+        ...(lastName ? { lastName } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+        ...(newPasswordHash ? { passwordHash: newPasswordHash } : {}),
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        photoUrl: true,
+        schoolId: true,
+      },
+    });
+
+    res.json({ ok: true, user: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const profileUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+});
+
+authRouter.post("/profile/photo", requireAuth, profileUpload.single("file"), async (req, res, next) => {
+  try {
+    if (!req.file) throw new HttpError(400, "No photo file uploaded.");
+    assertPhotoSize(req.file.size);
+    const detected = detectImage(req.file.buffer);
+    if (!detected) throw new HttpError(400, "Photo must be JPEG, PNG, or WebP.");
+
+    const stored = await storeUserPhoto(req.authUser!.id, req.file.buffer, detected.extension);
+
+    const updated = await prisma.user.update({
+      where: { id: req.authUser!.id },
+      data: {
+        photoUrl: stored.photoUrl,
+        photoStorageKey: stored.photoStorageKey,
+      },
+      select: { id: true, photoUrl: true },
+    });
+
+    res.json({ ok: true, photoUrl: updated.photoUrl });
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.delete("/profile/photo", requireAuth, async (req, res, next) => {
+  try {
+    await prisma.user.update({
+      where: { id: req.authUser!.id },
+      data: {
+        photoUrl: null,
+        photoStorageKey: null,
+      },
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+authRouter.get("/profile/photo/:userId", async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: String(req.params.userId) },
+      select: { photoStorageKey: true },
+    });
+    if (!user?.photoStorageKey) throw new HttpError(404, "Photo not found.");
+
+    const filePath = path.join(process.cwd(), "storage", user.photoStorageKey);
+    const stream = createReadStream(filePath);
+    stream.on("error", () => res.status(404).end());
+    stream.pipe(res);
+  } catch (error) {
+    next(error);
+  }
+});
+

@@ -37,7 +37,6 @@ function parentVisibleAtSchool(schoolId: string) {
   return {
     OR: [
       { registeredSchoolId: schoolId },
-      { registeredSchoolId: null, students: { none: {} } },
       { students: { some: { student: { enrollments: { some: { schoolId } } } } } },
     ],
   };
@@ -490,6 +489,101 @@ parentsRouter.post("/parents/:id/children", requireAuth, requireRole("SCHOOL_ADM
   }
 });
 
+parentsRouter.post("/parents/:id/toggle-status", requireAuth, requireRole("SCHOOL_ADMIN"), async (req, res, next) => {
+  try {
+    const admin = await prisma.user.findUnique({ where: { id: req.authUser!.id }, include: { school: true } });
+    if (!admin?.school?.isActive) throw new HttpError(403, "You are not allowed to access this record.");
+    const guardian = await prisma.guardian.findFirst({
+      where: { id: String(req.params.id), organizationId: admin.school.organizationId, ...parentVisibleAtSchool(admin.school.id) },
+      include: { user: true },
+    });
+    if (!guardian) throw new HttpError(404, "Parent was not found.");
+
+    if (!guardian.userId || !guardian.user) {
+      throw new HttpError(400, "This parent does not have a portal login account yet.");
+    }
+
+    const newStatus = guardian.user.status === "ACTIVE" ? "DISABLED" : "ACTIVE";
+    await prisma.user.update({
+      where: { id: guardian.userId },
+      data: { status: newStatus },
+    });
+
+    res.json({ ok: true, status: newStatus });
+  } catch (error) {
+    next(error);
+  }
+});
+
+parentsRouter.delete("/parents/:id", requireAuth, requireRole("SCHOOL_ADMIN"), async (req, res, next) => {
+  try {
+    const admin = await prisma.user.findUnique({ where: { id: req.authUser!.id }, include: { school: true } });
+    if (!admin?.school?.isActive) throw new HttpError(403, "You are not allowed to access this record.");
+    const school = admin.school;
+    const guardian = await prisma.guardian.findFirst({
+      where: { id: String(req.params.id), organizationId: school.organizationId, ...parentVisibleAtSchool(school.id) },
+      include: {
+        students: {
+          include: {
+            student: {
+              include: {
+                enrollments: { select: { schoolId: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!guardian) throw new HttpError(404, "Parent was not found.");
+
+    const isSuperAdmin = req.authUser?.role === "SUPER_ADMIN" || req.authUser?.actingFromSuperAdmin;
+    const requestedScope = (req.body?.scope || req.query?.scope || "SCHOOL_ONLY") as string;
+    const isOrgWide = isSuperAdmin && requestedScope === "ALL_ORGANIZATION";
+
+    const thisSchoolStudentIds = guardian.students
+      .filter((sg) => sg.student.enrollments.some((enr) => enr.schoolId === school.id))
+      .map((sg) => sg.studentId);
+
+    const otherSchoolStudents = guardian.students.filter(
+      (sg) => !sg.student.enrollments.some((enr) => enr.schoolId === school.id)
+    );
+
+    if (!isOrgWide && otherSchoolStudents.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        if (thisSchoolStudentIds.length > 0) {
+          await tx.studentGuardian.deleteMany({
+            where: { guardianId: guardian.id, studentId: { in: thisSchoolStudentIds } },
+          });
+        }
+      });
+      res.json({
+        ok: true,
+        removedFromSchool: true,
+        message: `Parent ${guardian.firstName} ${guardian.lastName} was unlinked from this school's students. Other school relationships were preserved.`,
+      });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.studentGuardian.deleteMany({ where: { guardianId: guardian.id } });
+      if (guardian.userId) {
+        await tx.inviteToken.deleteMany({ where: { userId: guardian.userId } });
+        await tx.guardian.update({ where: { id: guardian.id }, data: { userId: null } });
+        await tx.user.deleteMany({ where: { id: guardian.userId, role: "PARENT" } });
+      }
+      await tx.guardian.delete({ where: { id: guardian.id } });
+    });
+
+    res.json({
+      ok: true,
+      deletedCompletely: true,
+      message: `Parent ${guardian.firstName} ${guardian.lastName} was deleted.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 parentsRouter.get("/parent/children", requireAuth, requireRole("PARENT"), async (req, res, next) => {
   try {
     const guardian = await prisma.guardian.findFirst({
@@ -499,6 +593,11 @@ parentsRouter.get("/parent/children", requireAuth, requireRole("PARENT"), async 
           include: {
             student: {
               include: {
+                externalTransfers: {
+                  where: { status: "CONFIRMED" },
+                  orderBy: { confirmedAt: "desc" },
+                  take: 1,
+                },
                 enrollments: {
                   orderBy: { createdAt: "desc" },
                   include: {
@@ -519,12 +618,19 @@ parentsRouter.get("/parent/children", requireAuth, requireRole("PARENT"), async 
     if (!guardian) throw new HttpError(403, "You are not allowed to access this record.");
     res.json(
       guardian.students.map((link) => {
-        const current = link.student.enrollments.find((item) => item.status === "ACTIVE") ?? link.student.enrollments[0];
+        const activeEnrollment = link.student.enrollments.find((item) => item.status === "ACTIVE");
+        const hasActiveEnrollment = Boolean(activeEnrollment);
+        const current = activeEnrollment ?? link.student.enrollments[0];
         const totalAttendance = current?.attendance.length ?? 0;
         const presentAttendance = current?.attendance.filter((a) => a.status === "PRESENT" || a.status === "LATE").length ?? 0;
         const attendanceRate = totalAttendance > 0 ? Math.round((presentAttendance / totalAttendance) * 100) : null;
         const publishedExamsCount = current?.results.length ?? 0;
         const graduationYear = link.student.status === "ALUMNI" ? (current?.academicYear.name.slice(0, 4) || "2024") : null;
+        const latestTransfer = link.student.externalTransfers?.[0] ?? null;
+        const hasHistoricalTransfer =
+          link.student.enrollments.some((e) => e.status === "TRANSFERRED") || Boolean(latestTransfer);
+        const isTransferred = !hasActiveEnrollment && (link.student.status === "WITHDRAWN" || current?.status === "TRANSFERRED" || hasHistoricalTransfer);
+        const isReenrolled = hasActiveEnrollment && link.student.status === "ACTIVE" && hasHistoricalTransfer;
 
         return {
           id: link.student.id,
@@ -533,7 +639,12 @@ parentsRouter.get("/parent/children", requireAuth, requireRole("PARENT"), async 
           photoUrl: link.student.photoUrl,
           dateOfBirth: link.student.dateOfBirth,
           relationship: link.relationship,
-          status: link.student.status,
+          status: isTransferred ? "TRANSFERRED" : (hasActiveEnrollment && link.student.status === "ACTIVE" ? "ACTIVE" : link.student.status),
+          isTransferred,
+          isReenrolled,
+          destinationSchool: latestTransfer?.destinationSchoolName ?? null,
+          certificateNumber: latestTransfer?.certificateNumber ?? null,
+          transferredAt: latestTransfer?.confirmedAt ?? null,
           school: current?.school.name ?? "",
           year: current?.academicYear.name ?? "",
           level: current ? levelLabel(current.classGroup.level) : "",
@@ -604,7 +715,7 @@ parentsRouter.get("/parent/attendance", requireAuth, requireRole("PARENT"), asyn
             student: {
               include: {
                 enrollments: {
-                  where: { status: "ACTIVE" },
+                  orderBy: { createdAt: "desc" },
                   include: { school: true, classGroup: true, section: true },
                 },
               },
@@ -615,16 +726,19 @@ parentsRouter.get("/parent/attendance", requireAuth, requireRole("PARENT"), asyn
     });
     if (!guardian) throw new HttpError(403, "You are not allowed to access this record.");
 
-    const children = guardian.students.map((gs) => ({
-      id: gs.student.id,
-      name: `${gs.student.firstName} ${gs.student.fatherName} ${gs.student.grandfatherName}`.replace(/\s+/g, " ").trim(),
-      permanentId: gs.student.secondaryPermanentId ?? gs.student.permanentId,
-      photoUrl: gs.student.photoUrl,
-      relationship: gs.relationship,
-      school: gs.student.enrollments[0]?.school.name ?? "",
-      level: gs.student.enrollments[0] ? levelLabel(gs.student.enrollments[0].classGroup.level) : "",
-      section: gs.student.enrollments[0]?.section.name ?? "",
-    }));
+    const children = guardian.students.map((gs) => {
+      const current = gs.student.enrollments.find((e) => e.status === "ACTIVE") ?? gs.student.enrollments[0];
+      return {
+        id: gs.student.id,
+        name: `${gs.student.firstName} ${gs.student.fatherName} ${gs.student.grandfatherName}`.replace(/\s+/g, " ").trim(),
+        permanentId: gs.student.secondaryPermanentId ?? gs.student.permanentId,
+        photoUrl: gs.student.photoUrl,
+        relationship: gs.relationship,
+        school: current?.school.name ?? "",
+        level: current ? levelLabel(current.classGroup.level) : "",
+        section: current?.section.name ?? "",
+      };
+    });
 
     const requestedChildId = typeof req.query.child === "string" && req.query.child ? req.query.child : (children[0]?.id ?? "");
 
@@ -675,7 +789,7 @@ parentsRouter.get("/parent/children/:studentId/attendance", requireAuth, require
             student: {
               include: {
                 enrollments: {
-                  where: { status: "ACTIVE" },
+                  orderBy: { createdAt: "desc" },
                   include: { school: true, classGroup: true, section: true },
                 },
               },
@@ -686,16 +800,19 @@ parentsRouter.get("/parent/children/:studentId/attendance", requireAuth, require
     });
     if (!guardian) throw new HttpError(403, "You are not allowed to access this record.");
 
-    const children = guardian.students.map((gs) => ({
-      id: gs.student.id,
-      name: `${gs.student.firstName} ${gs.student.fatherName} ${gs.student.grandfatherName}`.replace(/\s+/g, " ").trim(),
-      permanentId: gs.student.secondaryPermanentId ?? gs.student.permanentId,
-      photoUrl: gs.student.photoUrl,
-      relationship: gs.relationship,
-      school: gs.student.enrollments[0]?.school.name ?? "",
-      level: gs.student.enrollments[0] ? levelLabel(gs.student.enrollments[0].classGroup.level) : "",
-      section: gs.student.enrollments[0]?.section.name ?? "",
-    }));
+    const children = guardian.students.map((gs) => {
+      const current = gs.student.enrollments.find((e) => e.status === "ACTIVE") ?? gs.student.enrollments[0];
+      return {
+        id: gs.student.id,
+        name: `${gs.student.firstName} ${gs.student.fatherName} ${gs.student.grandfatherName}`.replace(/\s+/g, " ").trim(),
+        permanentId: gs.student.secondaryPermanentId ?? gs.student.permanentId,
+        photoUrl: gs.student.photoUrl,
+        relationship: gs.relationship,
+        school: current?.school.name ?? "",
+        level: current ? levelLabel(current.classGroup.level) : "",
+        section: current?.section.name ?? "",
+      };
+    });
 
     const payload = await buildStudentAttendancePayload({
       studentId,
@@ -725,6 +842,11 @@ parentsRouter.get("/parent/children/:studentId", requireAuth, requireRole("PAREN
     const student = await prisma.student.findUnique({
       where: { id: String(req.params.studentId) },
       include: {
+        externalTransfers: {
+          where: { status: "CONFIRMED" },
+          orderBy: { confirmedAt: "desc" },
+          take: 1,
+        },
         enrollments: {
           orderBy: { createdAt: "desc" },
           include: {
@@ -760,6 +882,18 @@ parentsRouter.get("/parent/children/:studentId", requireAuth, requireRole("PAREN
       sectionId: enrollment.sectionId,
       sectionSubjectIds: enrollment.section.subjects.map((row) => row.subjectId),
     })), published, names);
+
+    const activeEnrollment = student.enrollments.find((item) => item.status === "ACTIVE");
+    const hasActiveEnrollment = Boolean(activeEnrollment);
+    const latestTransfer = student.externalTransfers?.[0] ?? null;
+    const hasHistoricalTransfer =
+      student.enrollments.some((e) => e.status === "TRANSFERRED") || Boolean(latestTransfer);
+    const isTransferred = !hasActiveEnrollment && (student.status === "WITHDRAWN" || hasHistoricalTransfer);
+    const isReenrolled = hasActiveEnrollment && student.status === "ACTIVE" && hasHistoricalTransfer;
+    const reenrollmentMessage = isReenrolled
+      ? "Your re-enrollment has been approved. You can now access your current academic information and previous academic records."
+      : null;
+
     res.json({
       id: student.id,
       permanentId: student.secondaryPermanentId ?? student.permanentId,
@@ -768,7 +902,18 @@ parentsRouter.get("/parent/children/:studentId", requireAuth, requireRole("PAREN
       dateOfBirth: student.dateOfBirth,
       gender: student.gender,
       nationalId: student.nationalId,
-      status: student.status,
+      status: isTransferred ? "TRANSFERRED" : (hasActiveEnrollment && student.status === "ACTIVE" ? "ACTIVE" : student.status),
+      isTransferred,
+      isReenrolled,
+      reenrollmentMessage,
+      transferDetails: latestTransfer
+        ? {
+            destinationSchool: latestTransfer.destinationSchoolName ?? null,
+            certificateNumber: latestTransfer.certificateNumber,
+            transferredAt: latestTransfer.confirmedAt,
+            reason: latestTransfer.reason,
+          }
+        : null,
       enrollments: student.enrollments.map((enrollment) => ({
         id: enrollment.id,
         status: enrollment.status,

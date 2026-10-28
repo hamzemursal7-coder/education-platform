@@ -5,6 +5,7 @@ import { writeAudit } from "../lib/audit.js";
 import { studentPhotoPath } from "../lib/photos.js";
 import { isTerminalLevel, levelLabel, levelsForSchool, nextLevelFor, terminalLevelsForSchool } from "../lib/levels.js";
 import { judgeTerm2, term2BlockReason, type MarkProgress } from "../lib/promotionRules.js";
+import { enrollClass8InForm1 } from "../lib/form1Enrollment.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth, requireRole } from "../middleware/auth.js";
 import { HttpError } from "../middleware/error.js";
@@ -429,8 +430,8 @@ promotionRouter.post("/promotions", async (req, res, next) => {
           where: { id: decision.targetSectionId, classGroup: { schoolId: school.id, academicYearId: toYear.id, level: targetLevel } },
         });
         if (!target) throw new HttpError(400, `The destination section for ${enrollment.student.permanentId} is not in ${levelLabel(targetLevel)}.`);
-        const existing = await tx.enrollment.findUnique({
-          where: { studentId_academicYearId: { studentId: enrollment.studentId, academicYearId: toYear.id } },
+        const existing = await tx.enrollment.findFirst({
+          where: { studentId: enrollment.studentId, academicYearId: toYear.id, status: { not: "TRANSFERRED" } },
         });
         if (existing) throw new HttpError(409, `${enrollment.student.permanentId} already has an enrollment in ${toYear.name}.`);
         const studentNumber = await nextStudentNumber(tx, school.id);
@@ -931,6 +932,62 @@ promotionRouter.post("/alumni/:studentId/enroll-form-1", async (req, res, next) 
       where: { studentId: student.id, status: { in: ["PENDING", "WAITING_FOR_SECTION"] } },
     });
     if (pending) throw new HttpError(409, "This student already has a transfer request waiting for the other school.");
+
+    if (destination.id === school.id && sectionId && academicYearId) {
+      const formSection = await prisma.section.findFirst({
+        where: { id: sectionId },
+        include: { classGroup: true },
+      });
+      if (!formSection) throw new HttpError(400, "Form 1 section was not found.");
+
+      const result = await prisma.$transaction(async (tx) => {
+        const enrolled = await enrollClass8InForm1(tx, {
+          student,
+          organizationId: school.organizationId,
+          destinationSchoolId: school.id,
+          academicYearId,
+          section: { id: formSection.id, classGroupId: formSection.classGroupId },
+        });
+
+        const reqRecord = await tx.transferRequest.create({
+          data: {
+            studentId: student.id,
+            fromSchoolId: school.id,
+            toSchoolId: school.id,
+            fromEnrollmentId: source.id,
+            newEnrollmentId: enrolled.enrollment.id,
+            toAcademicYearId: academicYearId,
+            toSectionId: formSection.id,
+            status: "COMPLETED",
+            note: "Form 1 continuation (same school)",
+            requestedByUserId: req.authUser!.id,
+            decidedByUserId: req.authUser!.id,
+            decidedAt: new Date(),
+          },
+        });
+
+        return { enrolled, reqRecord };
+      });
+
+      await writeAudit({
+        schoolId: school.id,
+        actorUserId: req.authUser!.id,
+        action: "ALUMNI_FORM_1_ENROLLED",
+        entityType: "Enrollment",
+        entityId: result.enrolled.enrollment.id,
+        summary: `Enrolled Class 8 graduate ${student.permanentId} into Form 1 Section ${formSection.name} at ${school.name}. Assigned secondary ID ${result.enrolled.secondaryPermanentId}.`,
+      });
+
+      res.status(201).json({
+        id: result.reqRecord.id,
+        status: "COMPLETED",
+        school: destination.name,
+        enrollment: result.enrolled.enrollment,
+        secondaryPermanentId: result.enrolled.secondaryPermanentId,
+      });
+      return;
+    }
+
     const request = await prisma.transferRequest.create({
       data: {
         studentId: student.id,

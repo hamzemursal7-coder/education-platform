@@ -70,6 +70,10 @@ async function ensureStudentLoginEmail(
   });
   if (existing) {
     await syncLoginEmail(existing.id, email);
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { firstName: student.firstName, lastName: student.fatherName },
+    });
     return;
   }
   const next = email.trim().toLowerCase();
@@ -480,11 +484,14 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
       include: {
         guardians: { include: { guardian: { include: { user: { select: { email: true, status: true } } } } } },
         previousSchool: { select: { id: true, name: true, code: true } },
-        alumniRecords: { where: { schoolId: school.id }, orderBy: { createdAt: "desc" } },
+        alumniRecords: { orderBy: { createdAt: "desc" } },
+        externalExamRecords: {
+          orderBy: { createdAt: "desc" },
+        },
         enrollments: {
-          where: { schoolId: school.id },
+          where: { school: { organizationId: school.organizationId } },
           include: {
-            school: { select: { name: true } },
+            school: { select: { id: true, name: true, code: true } },
             academicYear: true,
             section: { include: { subjects: { include: { subject: true } } } },
             attendance: { orderBy: [{ date: "desc" }, { session: "asc" }], take: 60 },
@@ -493,6 +500,18 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
               orderBy: { createdAt: "desc" },
             },
             classGroup: { include: { subjects: { include: { subject: true } } } },
+            externalTransfer: {
+              select: {
+                id: true,
+                certificateNumber: true,
+                destinationSchoolName: true,
+                reason: true,
+                status: true,
+                confirmedAt: true,
+                reversedAt: true,
+                reversalReason: true,
+              },
+            },
           },
           orderBy: { createdAt: "desc" },
         },
@@ -506,7 +525,7 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
         include: { examSubject: { include: { exam: true } } },
       }),
       prisma.teacherAssignment.findMany({
-        where: { schoolId: school.id, sectionId: { in: student.enrollments.map((item) => item.sectionId) } },
+        where: { sectionId: { in: student.enrollments.map((item) => item.sectionId) } },
         include: { teacher: { include: { user: { select: { firstName: true, lastName: true } } } } },
       }),
       prisma.transferRequest.findMany({
@@ -551,10 +570,11 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
         })),
       })),
     );
-    const active = student.enrollments.find((item) => item.status === "ACTIVE") ?? student.enrollments[0];
+    const activeInThisSchool = student.enrollments.find((item) => item.status === "ACTIVE" && item.schoolId === school.id);
+    const active = activeInThisSchool ?? student.enrollments.find((item) => item.status === "ACTIVE") ?? student.enrollments.find((item) => item.schoolId === school.id) ?? student.enrollments[0];
     const activeElsewhere = await prisma.enrollment.findFirst({
       where: { studentId: student.id, status: "ACTIVE", schoolId: { not: school.id } },
-      select: { id: true },
+      select: { id: true, school: { select: { id: true, name: true } } },
     });
     const withMarks = student.enrollments.find((item) => published.some((mark) => mark.enrollmentId === item.id && !mark.isAbsent && mark.marks != null));
     const scored = (active && published.some((mark) => mark.enrollmentId === active.id && !mark.isAbsent && mark.marks != null)) ? active : (withMarks ?? active);
@@ -619,6 +639,60 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
       select: { id: true, email: true, status: true, passwordHash: true },
     });
 
+    const mappedEnrollments = [...student.enrollments]
+      .sort((left, right) => {
+        if (left.status === "ACTIVE" && right.status !== "ACTIVE") return -1;
+        if (right.status === "ACTIVE" && left.status !== "ACTIVE") return 1;
+        return right.academicYear.startDate.getTime() - left.academicYear.startDate.getTime() || right.createdAt.getTime() - left.createdAt.getTime();
+      })
+      .map((enrollment) => ({
+        id: enrollment.id,
+        schoolId: enrollment.school.id,
+        schoolName: enrollment.school.name,
+        schoolCode: enrollment.school.code,
+        isCurrentSchool: enrollment.school.id === school.id,
+        status: enrollment.status,
+        outcome: yearOutcome(enrollment.status),
+        examination: publicExamination(examinations.get(enrollment.id)),
+        studentNumber: enrollment.studentNumber,
+        rollNumber: enrollment.rollNumber,
+        admittedOn: enrollment.admittedOn,
+        academicYear: enrollment.academicYear,
+        section: enrollment.section,
+        level: levelLabel(enrollment.classGroup.level),
+        externalTransfer: enrollment.externalTransfer,
+        attendance: enrollment.attendance,
+        subjects: enrollment.section.subjects.map((row) => {
+          const assignment = assignments.find(
+            (item) => item.sectionId === enrollment.sectionId && item.subjectId === row.subjectId,
+          );
+          const marks = published.filter(
+            (item) => item.enrollmentId === enrollment.id && item.examSubject.subjectId === row.subjectId,
+          );
+          return {
+            id: row.subject.id,
+            name: row.subject.name,
+            teacher: assignment
+              ? `${assignment.teacher.publicId} ${assignment.teacher.user.firstName} ${assignment.teacher.user.lastName}`
+              : null,
+            terms: (["TERM_1", "TERM_2"] as const).map((term) => {
+              const mark = marks.find((item) => item.examSubject.exam.term === term);
+              if (!mark) return { term, result: "Not published yet" };
+              if (mark.isAbsent) return { term, result: `Absent: ${mark.comment ?? ""}` };
+              return { term, result: String(mark.marks) };
+            }),
+            result: (() => {
+              const mark = marks[0];
+              if (!mark) return "Not published yet";
+              if (mark.isAbsent) return `Absent: ${mark.comment ?? ""}`;
+              return String(mark.marks);
+            })(),
+          };
+        }),
+      }));
+    const currentEnrollment = mappedEnrollments.find((item) => item.status === "ACTIVE") ?? null;
+    const previousEnrollments = mappedEnrollments.filter((item) => item.id !== currentEnrollment?.id);
+
     res.json({
       id: student.id,
       permanentId: student.permanentId,
@@ -636,7 +710,9 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
       transferCertificateNo: student.transferCertificateNo,
       staffNotes: student.staffNotes,
       status: student.status,
-      school: { id: school.id, name: school.name },
+      school: currentEnrollment ? { id: currentEnrollment.schoolId, name: currentEnrollment.schoolName } : { id: school.id, name: school.name },
+      currentEnrollment,
+      previousEnrollments,
       portalStatus: portalUser?.status ?? "NONE",
       hasLogin: Boolean(portalUser?.passwordHash),
       email: portalUser?.email ?? null,
@@ -689,58 +765,29 @@ studentsRouter.get("/students/:id", async (req, res, next) => {
         section: scored?.section.name ?? null,
         outcome: scoredOutcome?.label ?? null,
       },
-      placement: active ? {
-        enrollmentId: active.id,
-        year: active.academicYear.name,
-        sectionId: active.sectionId,
+      placement: activeInThisSchool ? {
+        enrollmentId: activeInThisSchool.id,
+        year: activeInThisSchool.academicYear.name,
+        sectionId: activeInThisSchool.sectionId,
         sections: placementSections.map((section) => ({
           id: section.id,
           label: `${levelLabel(section.classGroup.level)} · Section ${section.name}`,
         })),
       } : null,
       timeline,
-      enrollments: [...student.enrollments]
-        .sort((left, right) => right.academicYear.startDate.getTime() - left.academicYear.startDate.getTime() || right.createdAt.getTime() - left.createdAt.getTime())
-        .map((enrollment) => ({
-        id: enrollment.id,
-        schoolName: enrollment.school.name,
-        status: enrollment.status,
-        outcome: yearOutcome(enrollment.status),
-        examination: publicExamination(examinations.get(enrollment.id)),
-        studentNumber: enrollment.studentNumber,
-        rollNumber: enrollment.rollNumber,
-        admittedOn: enrollment.admittedOn,
-        academicYear: enrollment.academicYear,
-        section: enrollment.section,
-        level: levelLabel(enrollment.classGroup.level),
-        attendance: enrollment.attendance,
-        subjects: enrollment.section.subjects.map((row) => {
-          const assignment = assignments.find(
-            (item) => item.sectionId === enrollment.sectionId && item.subjectId === row.subjectId,
-          );
-          const marks = published.filter(
-            (item) => item.enrollmentId === enrollment.id && item.examSubject.subjectId === row.subjectId,
-          );
-          return {
-            id: row.subject.id,
-            name: row.subject.name,
-            teacher: assignment
-              ? `${assignment.teacher.publicId} ${assignment.teacher.user.firstName} ${assignment.teacher.user.lastName}`
-              : null,
-            terms: (["TERM_1", "TERM_2"] as const).map((term) => {
-              const mark = marks.find((item) => item.examSubject.exam.term === term);
-              if (!mark) return { term, result: "Not published yet" };
-              if (mark.isAbsent) return { term, result: `Absent: ${mark.comment ?? ""}` };
-              return { term, result: String(mark.marks) };
-            }),
-            result: (() => {
-              const mark = marks[0];
-              if (!mark) return "Not published yet";
-              if (mark.isAbsent) return `Absent: ${mark.comment ?? ""}`;
-              return String(mark.marks);
-            })(),
-          };
-        }),
+      enrollments: mappedEnrollments,
+      externalExamRecords: (student.externalExamRecords ?? []).map((row) => ({
+        id: row.id,
+        subject: row.subject,
+        marksObtained: row.marksObtained,
+        maxMarks: row.maxMarks,
+        gradeOrClass: row.gradeOrClass,
+        examYear: row.examYear,
+        originSchool: row.originSchool,
+        isVerified: row.isVerified,
+        verifiedAt: row.verifiedAt,
+        notes: row.notes,
+        createdAt: row.createdAt,
       })),
     });
   } catch (error) {
@@ -944,6 +991,89 @@ studentsRouter.delete("/students/:studentId/guardians/:guardianId", async (req, 
   }
 });
 
+studentsRouter.post("/students/:id/toggle-status", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const student = await prisma.student.findFirst({
+      where: {
+        id: String(req.params.id),
+        organizationId: school.organizationId,
+        enrollments: { some: { schoolId: school.id } },
+      },
+    });
+    if (!student) throw new HttpError(404, "Student was not found.");
+
+    const newStatus = student.status === "ACTIVE" ? "WITHDRAWN" : "ACTIVE";
+    const enrollmentStatus = newStatus === "ACTIVE" ? "ACTIVE" : "TRANSFERRED";
+
+    await prisma.$transaction(async (tx) => {
+      await tx.student.update({
+        where: { id: student.id },
+        data: { status: newStatus },
+      });
+      await tx.enrollment.updateMany({
+        where: { studentId: student.id, schoolId: school.id },
+        data: { status: enrollmentStatus },
+      });
+      await tx.user.updateMany({
+        where: { role: "STUDENT", personKey: student.permanentId },
+        data: { status: newStatus === "ACTIVE" ? "ACTIVE" : "DISABLED" },
+      });
+    });
+
+    res.json({ ok: true, status: newStatus });
+  } catch (error) {
+    next(error);
+  }
+});
+
+studentsRouter.delete("/students/:id", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const student = await prisma.student.findFirst({
+      where: {
+        id: String(req.params.id),
+        organizationId: school.organizationId,
+        enrollments: { some: { schoolId: school.id } },
+      },
+    });
+    if (!student) throw new HttpError(404, "Student was not found.");
+
+    await prisma.$transaction(async (tx) => {
+      const enrollments = await tx.enrollment.findMany({
+        where: { studentId: student.id },
+        select: { id: true },
+      });
+      const enrollmentIds = enrollments.map((e) => e.id);
+
+      if (enrollmentIds.length > 0) {
+        const fees = await tx.studentFee.findMany({
+          where: { enrollmentId: { in: enrollmentIds } },
+          select: { id: true },
+        });
+        const feeIds = fees.map((f) => f.id);
+        if (feeIds.length > 0) {
+          await tx.payment.deleteMany({ where: { studentFeeId: { in: feeIds } } });
+        }
+        await tx.studentFee.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.attendanceRecord.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.subjectResult.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.enrollment.deleteMany({ where: { studentId: student.id } });
+      }
+
+      await tx.studentDocument.deleteMany({ where: { studentId: student.id } });
+      await tx.alumniRecord.deleteMany({ where: { studentId: student.id } });
+      await tx.studentGuardian.deleteMany({ where: { studentId: student.id } });
+      await tx.user.deleteMany({ where: { role: "STUDENT", personKey: student.permanentId } });
+      await tx.student.delete({ where: { id: student.id } });
+    });
+
+    res.json({ ok: true, message: `Student ${student.firstName} ${student.fatherName} was deleted.` });
+  } catch (error) {
+    next(error);
+  }
+});
+
 const studentUpdateSchema = z.object({
   firstName: z.string().trim().min(2).max(80),
   fatherName: z.string().trim().min(2).max(80),
@@ -1080,6 +1210,21 @@ studentsRouter.post("/students", async (req, res, next) => {
       const taken = await prisma.student.findUnique({ where: { nationalId: studentNira } });
       if (taken) throw new HttpError(409, "This student NIRA is already registered. NIRA is optional, so leave it empty.");
     }
+    const existingDuplicate = await prisma.student.findFirst({
+      where: {
+        organizationId: school.organizationId,
+        firstName: { equals: body.data.firstName, mode: "insensitive" },
+        fatherName: { equals: body.data.fatherName, mode: "insensitive" },
+        grandfatherName: { equals: body.data.grandfatherName, mode: "insensitive" },
+        dateOfBirth: new Date(body.data.dateOfBirth),
+      },
+    });
+    if (existingDuplicate) {
+      throw new HttpError(
+        409,
+        `A student master record for ${existingDuplicate.firstName} ${existingDuplicate.fatherName} ${existingDuplicate.grandfatherName} (${existingDuplicate.permanentId}) already exists in your organization. Please reuse the existing student record via the Return / Re-enroll or Transfer workflow instead of creating a duplicate.`,
+      );
+    }
     let previousSchoolId: string | null = null;
     if (body.data.previousSchoolId) {
       const previousSchool = await prisma.school.findFirst({
@@ -1195,3 +1340,99 @@ async function resolveGuardian(
     },
   });
 }
+
+const externalMarkInputSchema = z.object({
+  enrollmentId: z.string().optional(),
+  originSchool: z.string().trim().max(100).optional(),
+  subject: z.string().trim().min(1).max(100),
+  marksObtained: z.number().min(0).max(1000),
+  maxMarks: z.number().min(1).max(1000).default(100),
+  gradeOrClass: z.string().trim().max(20).optional(),
+  examYear: z.string().trim().max(20).optional(),
+  isVerified: z.boolean().default(false),
+  notes: z.string().trim().max(500).optional(),
+});
+
+studentsRouter.post("/students/:id/external-marks", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const student = await prisma.student.findFirst({
+      where: { id: String(req.params.id), organizationId: school.organizationId },
+    });
+    if (!student) throw new HttpError(404, "Student was not found.");
+
+    const body = externalMarkInputSchema.safeParse(req.body ?? {});
+    if (!body.success) {
+      throw new HttpError(400, body.error.issues[0]?.message || "Invalid examination mark details.");
+    }
+
+    const created = await prisma.externalExamRecord.create({
+      data: {
+        studentId: student.id,
+        enrollmentId: body.data.enrollmentId || null,
+        originSchool: body.data.originSchool || null,
+        subject: body.data.subject,
+        marksObtained: body.data.marksObtained,
+        maxMarks: body.data.maxMarks,
+        gradeOrClass: body.data.gradeOrClass || null,
+        examYear: body.data.examYear || null,
+        isVerified: Boolean(body.data.isVerified),
+        verifiedByUserId: body.data.isVerified ? req.authUser!.id : null,
+        verifiedAt: body.data.isVerified ? new Date() : null,
+        notes: body.data.notes || null,
+      },
+    });
+
+    await writeAudit({
+      schoolId: school.id,
+      actorUserId: req.authUser!.id,
+      action: "EXTERNAL_EXAM_MARK_RECORDED",
+      entityType: "ExternalExamRecord",
+      entityId: created.id,
+      summary: `Recorded external exam mark for ${student.permanentId}: ${created.subject} (${created.marksObtained}/${created.maxMarks}) - ${created.isVerified ? "VERIFIED" : "UNVERIFIED"}.`,
+    });
+
+    res.status(201).json(created);
+  } catch (error) {
+    next(error);
+  }
+});
+
+studentsRouter.patch("/students/:id/external-marks/:markId/verify", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const body = z.object({ isVerified: z.boolean().default(true) }).safeParse(req.body ?? {});
+    const isVerified = body.success ? body.data.isVerified : true;
+
+    const record = await prisma.externalExamRecord.findFirst({
+      where: {
+        id: String(req.params.markId),
+        studentId: String(req.params.id),
+        student: { organizationId: school.organizationId },
+      },
+    });
+    if (!record) throw new HttpError(404, "External examination record not found.");
+
+    const updated = await prisma.externalExamRecord.update({
+      where: { id: record.id },
+      data: {
+        isVerified,
+        verifiedByUserId: isVerified ? req.authUser!.id : null,
+        verifiedAt: isVerified ? new Date() : null,
+      },
+    });
+
+    await writeAudit({
+      schoolId: school.id,
+      actorUserId: req.authUser!.id,
+      action: isVerified ? "EXTERNAL_EXAM_MARK_VERIFIED" : "EXTERNAL_EXAM_MARK_UNVERIFIED",
+      entityType: "ExternalExamRecord",
+      entityId: updated.id,
+      summary: `${isVerified ? "Verified" : "Unverified"} external examination mark for subject ${updated.subject}.`,
+    });
+
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});

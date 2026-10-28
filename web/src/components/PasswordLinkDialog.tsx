@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, Copy, Link2, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Link2, X } from "lucide-react";
 
 export function passwordLinkUrl(path: string) {
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
@@ -33,20 +33,36 @@ export function PasswordLinkDialog({
               </button>
             </div>
             <p className="mt-1 text-sm leading-6 text-slate-600">
-              Copy this link or send it on WhatsApp{email ? <> to <span className="font-semibold text-slate-900">{email}</span></> : ""}. It works once. After the password is saved, the same link cannot be used again.
+              Copy this link, open it directly, or send it on WhatsApp{email ? <> to <span className="font-semibold text-slate-900">{email}</span></> : ""}. It works once. After the password is saved, the same link cannot be used again.
             </p>
           </div>
         </div>
         <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">One-time link</p>
-          <p className="mt-1 break-all text-sm font-medium leading-6 text-slate-800">{url}</p>
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-1 block break-all text-sm font-semibold leading-6 text-blue-600 hover:underline"
+          >
+            {url}
+          </a>
         </div>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <button type="button" className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700" onClick={onClose}>Close</button>
-          <a className="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700" href={whatsApp} target="_blank" rel="noreferrer">Send on WhatsApp</a>
+          <button type="button" className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50" onClick={onClose}>Close</button>
+          <a
+            className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Open link
+          </a>
+          <a className="inline-flex items-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100" href={whatsApp} target="_blank" rel="noreferrer">Send on WhatsApp</a>
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white"
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500"
             onClick={() => {
               void navigator.clipboard.writeText(url).then(() => setCopied(true)).catch(() => {
                 const area = document.createElement("textarea");

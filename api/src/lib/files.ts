@@ -48,6 +48,16 @@ export async function storeDocumentFile(schoolId: string, studentId: string, buf
   return path.posix.join("documents", schoolId, studentId, fileName);
 }
 
+export async function storeConductAttachmentFile(schoolId: string, reportId: string, buffer: Buffer, extension: string) {
+  const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
+  const folder = path.join(process.cwd(), "storage", "conduct", schoolId, reportId);
+  await mkdir(folder, { recursive: true });
+  const fileName = `${Date.now()}-${hash}.${extension}`;
+  const absolute = path.join(folder, fileName);
+  await writeFile(absolute, buffer);
+  return path.posix.join("conduct", schoolId, reportId, fileName);
+}
+
 export function absoluteStoragePath(storageKey: string) {
   return path.join(process.cwd(), "storage", storageKey);
 }

@@ -250,3 +250,17 @@ announcementsRouter.post(
     }
   },
 );
+
+announcementsRouter.delete("/announcements/:id", requireRole("SCHOOL_ADMIN"), async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const row = await prisma.announcement.findFirst({ where: { id: String(req.params.id), schoolId: school.id } });
+    if (!row) throw new HttpError(404, "Announcement was not found.");
+    await prisma.announcementRead.deleteMany({ where: { announcementId: row.id } });
+    await prisma.announcement.delete({ where: { id: row.id } });
+    res.json({ ok: true, id: row.id });
+  } catch (error) {
+    next(error);
+  }
+});
+

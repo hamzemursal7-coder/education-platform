@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowRight,
+  ArrowRightLeft,
   BadgeCheck,
   Calendar,
   CalendarCheck2,
@@ -559,6 +560,15 @@ type StudentDashboard = {
     nationalId?: string | null;
     gender?: string | null;
     status?: string;
+    isTransferred?: boolean;
+    isReenrolled?: boolean;
+    reenrollmentMessage?: string | null;
+    transferDetails?: {
+      destinationSchool: string | null;
+      certificateNumber: string;
+      transferredAt: string | null;
+      reason: string | null;
+    } | null;
     rollNumber?: number | null;
     guardians?: Array<{
       relationship: string;
@@ -750,14 +760,20 @@ export function StudentResultsPage() {
                     <h1 className="text-base sm:text-lg font-bold tracking-tight text-slate-900">
                       {data.student.name}
                     </h1>
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
-                      data.student.status === "ALUMNI"
+                    {data.student.isTransferred || data.student.status === "TRANSFERRED" ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20">
+                        <ArrowRightLeft className="h-3 w-3 text-amber-600" />
+                        Transferred
+                      </span>
+                    ) : (
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${data.student.status === "ALUMNI"
                         ? "bg-purple-50 text-purple-700 ring-purple-600/20"
                         : "bg-emerald-50 text-emerald-700 ring-emerald-600/20"
-                    }`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${data.student.status === "ALUMNI" ? "bg-purple-600" : "bg-emerald-500 animate-pulse"}`} />
-                      {data.student.status ?? data.year?.status ?? "ACTIVE"}
-                    </span>
+                        }`}>
+                        <span className={`h-1.5 w-1.5 rounded-full ${data.student.status === "ALUMNI" ? "bg-purple-600" : "bg-emerald-500 animate-pulse"}`} />
+                        {data.student.status ?? data.year?.status ?? "ACTIVE"}
+                      </span>
+                    )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
                     <span className="inline-flex items-center gap-1 rounded-md bg-slate-50 px-2 py-0.5 font-medium text-slate-700 ring-1 ring-slate-200/60">
@@ -779,6 +795,11 @@ export function StudentResultsPage() {
                       <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 ring-1 ring-blue-100">
                         <GraduationCap className="h-3 w-3" />
                         {data.year.level} · Section {data.year.section}
+                      </span>
+                    ) : null}
+                    {data.student.isTransferred && data.student.transferDetails?.certificateNumber ? (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200">
+                        TC #{data.student.transferDetails.certificateNumber}
                       </span>
                     ) : null}
                   </div>
@@ -815,6 +836,59 @@ export function StudentResultsPage() {
               </div>
             </div>
           </section>
+
+          {/* Approved Re-enrollment Banner for Returning Student */}
+          {!data.student.isTransferred && data.student.isReenrolled ? (
+            <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-4 text-emerald-950 shadow-xs">
+              <div className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
+                  <CheckCircle2 className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-bold text-emerald-950">Re-enrollment Approved</h2>
+                  <p className="mt-1 text-xs text-emerald-800">
+                    {data.student.reenrollmentMessage ??
+                      "Your re-enrollment has been approved. You can now access your current academic information and previous academic records."}
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          {/* Transferred Notification Banner for Student (shown only when currently transferred out) */}
+          {data.student.isTransferred ? (
+            <section className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/90 p-4 text-amber-900 shadow-xs">
+              <div className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700 ring-1 ring-amber-200">
+                  <ArrowRightLeft className="h-5 w-5" />
+                </span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-bold text-amber-950">Enrollment Transferred</h2>
+                    {data.student.transferDetails?.certificateNumber ? (
+                      <span className="rounded-md bg-white/80 px-2 py-0.5 font-mono text-[11px] font-bold text-amber-800 ring-1 ring-amber-300">
+                        TC #{data.student.transferDetails.certificateNumber}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Your enrollment at this school has been transferred{" "}
+                    {data.student.transferDetails?.destinationSchool ? (
+                      <>
+                        waxaana laguu wareejiyey <strong>{data.student.transferDetails.destinationSchool}</strong>.
+                      </>
+                    ) : (
+                      "dugsi kale."
+                    )}{" "}
+
+                    You can still access your account to view all your previous academic
+                    records, including grades, examination results, and attendance.
+                    These records will be preserved for future reference
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {/* Side-by-Side Compact Info Cards: Student & Parent */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
@@ -982,11 +1056,10 @@ export function StudentResultsPage() {
                     </div>
                   </div>
                   <span
-                    className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
-                      term.examConfigured
-                        ? "bg-amber-50 text-amber-700 ring-amber-600/20"
-                        : "bg-slate-100 text-slate-500 ring-slate-200/70"
-                    }`}
+                    className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${term.examConfigured
+                      ? "bg-amber-50 text-amber-700 ring-amber-600/20"
+                      : "bg-slate-100 text-slate-500 ring-slate-200/70"
+                      }`}
                   >
                     {term.examConfigured ? "Not Yet Published" : "Not available"}
                   </span>

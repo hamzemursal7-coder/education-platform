@@ -208,6 +208,123 @@ academicRouter.post("/academic-years/:id/current", async (req, res, next) => {
   }
 });
 
+academicRouter.patch("/academic-years/:id", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const year = await prisma.academicYear.findFirst({ where: { id: req.params.id, schoolId: school.id } });
+    if (!year) throw new HttpError(404, "Academic year was not found.");
+    const body = yearSchema.partial().safeParse(req.body);
+    if (!body.success) throw new HttpError(400, "Invalid academic year data.");
+
+    const updateData: { name?: string; startDate?: Date; endDate?: Date; isCurrent?: boolean } = {};
+    if (body.data.name) updateData.name = body.data.name;
+    if (body.data.startDate) updateData.startDate = new Date(body.data.startDate);
+    if (body.data.endDate) updateData.endDate = new Date(body.data.endDate);
+    if (typeof body.data.isCurrent === "boolean") updateData.isCurrent = body.data.isCurrent;
+
+    if (updateData.startDate && updateData.endDate && updateData.endDate <= updateData.startDate) {
+      throw new HttpError(400, "The end date must be after the start date.");
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (updateData.isCurrent) {
+        await tx.academicYear.updateMany({ where: { schoolId: school.id }, data: { isCurrent: false } });
+      }
+      return tx.academicYear.update({
+        where: { id: year.id },
+        data: updateData,
+        include: { terms: true },
+      });
+    });
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+academicRouter.delete("/academic-years/:id", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const year = await prisma.academicYear.findFirst({
+      where: { id: req.params.id, schoolId: school.id },
+      include: {
+        classes: {
+          include: {
+            sections: true,
+          },
+        },
+      },
+    });
+    if (!year) throw new HttpError(404, "Academic year was not found.");
+
+    await prisma.$transaction(async (tx) => {
+      const enrollments = await tx.enrollment.findMany({
+        where: { academicYearId: year.id },
+        select: { id: true },
+      });
+      const enrollmentIds = enrollments.map((e) => e.id);
+
+      if (enrollmentIds.length > 0) {
+        const fees = await tx.studentFee.findMany({
+          where: { enrollmentId: { in: enrollmentIds } },
+          select: { id: true },
+        });
+        const feeIds = fees.map((f) => f.id);
+
+        if (feeIds.length > 0) {
+          await tx.payment.deleteMany({ where: { studentFeeId: { in: feeIds } } });
+          await tx.studentFee.deleteMany({ where: { id: { in: feeIds } } });
+        }
+
+        await tx.attendanceRecord.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.subjectResult.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.promotionDecision.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.sectionMove.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.transferRequest.deleteMany({
+          where: { OR: [{ fromEnrollmentId: { in: enrollmentIds } }, { toAcademicYearId: year.id }] },
+        });
+        await tx.enrollment.deleteMany({ where: { id: { in: enrollmentIds } } });
+      }
+
+      await tx.promotionBatch.deleteMany({
+        where: { OR: [{ fromYearId: year.id }, { toYearId: year.id }] },
+      });
+
+      await tx.teacherAssignment.deleteMany({ where: { academicYearId: year.id } });
+
+      const exams = await tx.exam.findMany({ where: { academicYearId: year.id }, select: { id: true } });
+      const examIds = exams.map((ex) => ex.id);
+      if (examIds.length > 0) {
+        await tx.resultPublication.deleteMany({ where: { examId: { in: examIds } } });
+        await tx.subjectResult.deleteMany({ where: { examSubject: { examId: { in: examIds } } } });
+        await tx.examSubject.deleteMany({ where: { examId: { in: examIds } } });
+        await tx.examSection.deleteMany({ where: { examId: { in: examIds } } });
+        await tx.examClass.deleteMany({ where: { examId: { in: examIds } } });
+        await tx.exam.deleteMany({ where: { id: { in: examIds } } });
+      }
+
+      const sectionIds = year.classes.flatMap((c) => c.sections.map((s) => s.id));
+      if (sectionIds.length > 0) {
+        await tx.sectionSubject.deleteMany({ where: { sectionId: { in: sectionIds } } });
+        await tx.section.deleteMany({ where: { id: { in: sectionIds } } });
+      }
+
+      const classGroupIds = year.classes.map((c) => c.id);
+      if (classGroupIds.length > 0) {
+        await tx.classSubject.deleteMany({ where: { classGroupId: { in: classGroupIds } } });
+        await tx.classGroup.deleteMany({ where: { id: { in: classGroupIds } } });
+      }
+
+      await tx.term.deleteMany({ where: { academicYearId: year.id } });
+      await tx.academicYear.delete({ where: { id: year.id } });
+    });
+
+    res.json({ ok: true, message: `Academic year ${year.name} was deleted.` });
+  } catch (error) {
+    next(error);
+  }
+});
+
 academicRouter.get("/academic-years/:id", async (req, res, next) => {
   try {
     const school = await schoolOfAdmin(req.authUser!.id);
@@ -460,6 +577,112 @@ academicRouter.post("/sections/:id/subjects", async (req, res, next) => {
       }),
     ]);
     res.status(201).json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+academicRouter.patch("/sections/:id", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const section = await prisma.section.findFirst({
+      where: { id: String(req.params.id), classGroup: { schoolId: school.id } },
+      include: { classGroup: true, subjects: true },
+    });
+    if (!section) throw new HttpError(404, "Section was not found.");
+
+    const updateSectionSchema = z.object({
+      name: z.string().trim().min(1).max(20).optional(),
+      subjectIds: z.array(z.string()).optional(),
+    });
+    const body = updateSectionSchema.safeParse(req.body);
+    if (!body.success) throw new HttpError(400, "Invalid section update payload.");
+
+    const updated = await prisma.$transaction(async (tx) => {
+      let nextName = section.name;
+      if (body.data.name && body.data.name.toUpperCase() !== section.name) {
+        nextName = body.data.name.toUpperCase();
+        const duplicate = await tx.section.findUnique({
+          where: { classGroupId_name: { classGroupId: section.classGroupId, name: nextName } },
+        });
+        if (duplicate) throw new HttpError(409, `Section ${nextName} already exists in this class.`);
+      }
+
+      if (body.data.subjectIds) {
+        const subjects = await tx.subject.findMany({
+          where: { schoolId: school.id, isActive: true, id: { in: body.data.subjectIds } },
+          select: { id: true },
+        });
+        await tx.sectionSubject.deleteMany({ where: { sectionId: section.id } });
+        if (subjects.length > 0) {
+          await tx.sectionSubject.createMany({
+            data: subjects.map((s) => ({ sectionId: section.id, subjectId: s.id })),
+          });
+          await tx.classSubject.createMany({
+            data: subjects.map((s) => ({ classGroupId: section.classGroupId, subjectId: s.id })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return tx.section.update({
+        where: { id: section.id },
+        data: { name: nextName },
+      });
+    });
+
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+academicRouter.delete("/sections/:id", async (req, res, next) => {
+  try {
+    const school = await schoolOfAdmin(req.authUser!.id);
+    const section = await prisma.section.findFirst({
+      where: { id: String(req.params.id), classGroup: { schoolId: school.id } },
+    });
+    if (!section) throw new HttpError(404, "Section was not found.");
+
+    await prisma.$transaction(async (tx) => {
+      const enrollments = await tx.enrollment.findMany({
+        where: { sectionId: section.id },
+        select: { id: true },
+      });
+      const enrollmentIds = enrollments.map((e) => e.id);
+
+      if (enrollmentIds.length > 0) {
+        const fees = await tx.studentFee.findMany({
+          where: { enrollmentId: { in: enrollmentIds } },
+          select: { id: true },
+        });
+        const feeIds = fees.map((f) => f.id);
+
+        if (feeIds.length > 0) {
+          await tx.payment.deleteMany({ where: { studentFeeId: { in: feeIds } } });
+          await tx.studentFee.deleteMany({ where: { id: { in: feeIds } } });
+        }
+
+        await tx.attendanceRecord.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.subjectResult.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.promotionDecision.deleteMany({ where: { enrollmentId: { in: enrollmentIds } } });
+        await tx.sectionMove.deleteMany({
+          where: { OR: [{ enrollmentId: { in: enrollmentIds } }, { fromSectionId: section.id }, { toSectionId: section.id }] },
+        });
+        await tx.transferRequest.deleteMany({
+          where: { OR: [{ fromEnrollmentId: { in: enrollmentIds } }, { toSectionId: section.id }] },
+        });
+        await tx.enrollment.deleteMany({ where: { id: { in: enrollmentIds } } });
+      }
+
+      await tx.teacherAssignment.deleteMany({ where: { sectionId: section.id } });
+      await tx.examSection.deleteMany({ where: { sectionId: section.id } });
+      await tx.sectionSubject.deleteMany({ where: { sectionId: section.id } });
+      await tx.section.delete({ where: { id: section.id } });
+    });
+
+    res.json({ ok: true, message: `Section ${section.name} was deleted.` });
   } catch (error) {
     next(error);
   }

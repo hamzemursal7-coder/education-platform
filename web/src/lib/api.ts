@@ -4,6 +4,8 @@ export type SessionUser = {
   role: string;
   firstName: string;
   lastName: string;
+  phone?: string | null;
+  photoUrl?: string | null;
   schoolId: string | null;
   school?: { id: string; name: string; code: string; type: string } | null;
   actingFromSuperAdmin?: boolean;
@@ -60,6 +62,51 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (path === "/api/v1/auth/logout") sessionStorage.removeItem(sessionStorageKey);
   else rememberSession(payload);
   return payload;
+}
+
+export async function apiBlob(path: string, init?: RequestInit): Promise<{ blob: Blob; filename: string }> {
+  let response = await fetch(path, {
+    ...init,
+    credentials: "include",
+    headers: {
+      ...(sessionStorage.getItem(sessionStorageKey) ? { "X-Session-Key": sessionStorage.getItem(sessionStorageKey)! } : {}),
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (response.status === 401) {
+    const refreshed = await fetch("/api/v1/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      headers: sessionHeaders(),
+    });
+    if (refreshed.ok) {
+      rememberSession(await refreshed.clone().json().catch(() => null));
+      response = await fetch(path, {
+        ...init,
+        credentials: "include",
+        headers: {
+          ...(sessionStorage.getItem(sessionStorageKey) ? { "X-Session-Key": sessionStorage.getItem(sessionStorageKey)! } : {}),
+          ...(init?.headers ?? {}),
+        },
+      });
+    }
+  }
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? "Failed to download document.");
+  }
+
+  const disposition = response.headers.get("content-disposition") || "";
+  let filename = "document.docx";
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  if (match && match[1]) {
+    filename = match[1];
+  }
+
+  const blob = await response.blob();
+  return { blob, filename };
 }
 
 export const homeByRole: Record<string, string> = {
