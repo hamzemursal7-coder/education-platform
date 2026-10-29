@@ -478,12 +478,9 @@ export function Shell({
               ref={searchRef}
               value={headerQuery}
               onChange={(event) => setHeaderQuery(event.target.value)}
-              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/90 pl-10 pr-14 text-xs font-medium text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#2563eb] focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
+              className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/90 pl-10 pr-4 text-xs font-medium text-slate-800 outline-none placeholder:text-slate-400 focus:border-[#2563eb] focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
               placeholder="Search students, teachers, classes..."
             />
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 shadow-2xs">
-              ⌘ K
-            </span>
           </form>
 
           {/* Right actions: Single Bell notification badge and Admin Profile dropdown */}
@@ -908,7 +905,7 @@ export function SuperAdminHome({ user }: { user?: SessionUser } = {}) {
               <span>Super Admin Command Center · Centralized Control</span>
             </div>
             <h2 className="mt-3 text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white">
-              Welcome back, <span className="text-indigo-400">{user ? `${user.firstName} ${user.lastName}` : "Super Admin"}!</span> 👋
+              Welcome back, <span className="text-indigo-400">{user ? `${user.firstName} ${user.lastName}` : "Super Admin"}!</span>
             </h2>
             <p className="mt-2 text-sm sm:text-base text-slate-300 leading-relaxed">
               Centralized command center and complete oversight across all organization schools, students, educators, and finances.
@@ -1613,7 +1610,7 @@ export function SchoolDashboard({ user }: { user?: SessionUser }) {
       <section className="relative overflow-hidden rounded-3xl border border-blue-100/80 bg-gradient-to-r from-[#eef5ff] via-[#f3f7fd] to-[#f8fbff] p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="relative z-10">
           <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight text-slate-900">
-            Welcome back, <span className="text-[#2563eb]">{adminName}!</span> 👋
+            Welcome back, <span className="text-[#2563eb]">{adminName}!</span>
           </h2>
           <p className="mt-1 text-sm font-medium text-slate-500">
             Here's what's happening at <span className="font-semibold text-slate-700">{schoolName}</span> today.
