@@ -1,11 +1,27 @@
 node_modules/
 dist/
+
+# Environment files
 .env
+.env.*
+.env*.local
+*.env
+!.env.example
+
 *.log
 .DS_Store
 coverage/
-*.sql
+
+# Database dumps (preserve Prisma migration SQL)
+backup*.sql
+*.dump.sql
+!api/prisma/migrations/**/migration.sql
+
+# Build caches & tool configs
 *.tsbuildinfo
+.postman/
+postman/
+
 api/storage/
 mobile/.dart_tool/
 mobile/.flutter-plugins-dependencies
