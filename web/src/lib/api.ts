@@ -13,8 +13,16 @@ export type SessionUser = {
 
 const sessionStorageKey = "emp_session";
 
+function getStoredSessionKey(): string {
+  try {
+    return sessionStorage.getItem(sessionStorageKey) || localStorage.getItem(sessionStorageKey) || "";
+  } catch {
+    return "";
+  }
+}
+
 function sessionHeaders(init?: RequestInit): HeadersInit {
-  const key = sessionStorage.getItem(sessionStorageKey) ?? "";
+  const key = getStoredSessionKey();
   return {
     "Content-Type": "application/json",
     ...(key ? { "X-Session-Key": key } : {}),
@@ -25,7 +33,62 @@ function sessionHeaders(init?: RequestInit): HeadersInit {
 function rememberSession(body: unknown) {
   if (!body || typeof body !== "object" || !("sessionKey" in body)) return;
   const key = (body as { sessionKey?: unknown }).sessionKey;
-  if (typeof key === "string" && key) sessionStorage.setItem(sessionStorageKey, key);
+  if (typeof key === "string" && key) {
+    try {
+      sessionStorage.setItem(sessionStorageKey, key);
+      localStorage.setItem(sessionStorageKey, key);
+    } catch {
+      // storage unavailable
+    }
+  }
+}
+
+function clearStoredSession() {
+  try {
+    sessionStorage.removeItem(sessionStorageKey);
+    localStorage.removeItem(sessionStorageKey);
+  } catch {
+    // ignore
+  }
+}
+
+async function extractHttpError(response: Response, defaultMessage: string): Promise<Error> {
+  // First attempt to parse JSON error message
+  try {
+    const body = (await response.clone().json()) as { message?: string; error?: string } | null;
+    if (body?.message && typeof body.message === "string" && body.message.trim()) {
+      return new Error(body.message.trim());
+    }
+    if (body?.error && typeof body.error === "string" && body.error.trim()) {
+      return new Error(body.error.trim());
+    }
+  } catch {
+    // Non-JSON response (e.g. HTML or plain text error from proxy/Express)
+  }
+
+  // Provide clear, actionable status-code specific messages
+  switch (response.status) {
+    case 400:
+      return new Error("Invalid request payload. Please verify your inputs.");
+    case 401:
+      return new Error("Your session has expired or authentication is required. Please log in again.");
+    case 403:
+      return new Error("You do not have permission to access this resource or perform this action.");
+    case 404:
+      return new Error("The requested service or route was not found (404). The backend service may still be updating.");
+    case 409:
+      return new Error("A data conflict occurred. Please refresh the page and try again.");
+    case 422:
+      return new Error("The submitted data was unprocessable. Please verify your inputs.");
+    case 500:
+      return new Error("An internal server error occurred (500). Please try again shortly.");
+    case 502:
+    case 503:
+    case 504:
+      return new Error("The backend server is temporarily unavailable or restarting. Please try again in a few moments.");
+    default:
+      return new Error(defaultMessage || `Request failed with status ${response.status}.`);
+  }
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -34,6 +97,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: "include",
     headers: sessionHeaders(init),
   });
+
   if (response.status === 401 && path !== "/api/v1/auth/login" && path !== "/api/v1/auth/refresh") {
     const refreshed = await fetch("/api/v1/auth/refresh", {
       method: "POST",
@@ -48,28 +112,29 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
         headers: sessionHeaders(init),
       });
       if (!retry.ok) {
-        const body = (await retry.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(body?.message ?? "Request failed.");
+        throw await extractHttpError(retry, "Request failed.");
       }
       return retry.json() as Promise<T>;
     }
   }
+
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Request failed.");
+    throw await extractHttpError(response, "Request failed.");
   }
+
   const payload = (await response.json()) as T;
-  if (path === "/api/v1/auth/logout") sessionStorage.removeItem(sessionStorageKey);
+  if (path === "/api/v1/auth/logout") clearStoredSession();
   else rememberSession(payload);
   return payload;
 }
 
 export async function apiBlob(path: string, init?: RequestInit): Promise<{ blob: Blob; filename: string }> {
+  const key = getStoredSessionKey();
   let response = await fetch(path, {
     ...init,
     credentials: "include",
     headers: {
-      ...(sessionStorage.getItem(sessionStorageKey) ? { "X-Session-Key": sessionStorage.getItem(sessionStorageKey)! } : {}),
+      ...(key ? { "X-Session-Key": key } : {}),
       ...(init?.headers ?? {}),
     },
   });
@@ -86,7 +151,7 @@ export async function apiBlob(path: string, init?: RequestInit): Promise<{ blob:
         ...init,
         credentials: "include",
         headers: {
-          ...(sessionStorage.getItem(sessionStorageKey) ? { "X-Session-Key": sessionStorage.getItem(sessionStorageKey)! } : {}),
+          ...(getStoredSessionKey() ? { "X-Session-Key": getStoredSessionKey() } : {}),
           ...(init?.headers ?? {}),
         },
       });
@@ -94,8 +159,7 @@ export async function apiBlob(path: string, init?: RequestInit): Promise<{ blob:
   }
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? "Failed to download document.");
+    throw await extractHttpError(response, "Failed to download document.");
   }
 
   const disposition = response.headers.get("content-disposition") || "";

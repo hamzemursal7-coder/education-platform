@@ -23,6 +23,11 @@ export function errorHandler(error: unknown, _req: Request, res: Response, _next
     }
   }
   console.error(error);
-  const msg = error instanceof Error ? error.message : "Something went wrong.";
+  const msg =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : (error as any)?.message || "Something went wrong.";
   res.status(500).json({ message: msg });
 }

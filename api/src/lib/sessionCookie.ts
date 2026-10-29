@@ -22,31 +22,41 @@ export function sessionKeyFrom(req: Request) {
 
 export function readAccessToken(req: Request) {
   const key = sessionKeyFrom(req);
-  if (key) return req.cookies?.[`emp_access_${key}`] as string | undefined;
+  if (key && req.cookies?.[`emp_access_${key}`]) {
+    return req.cookies[`emp_access_${key}`] as string;
+  }
   return req.cookies?.emp_access as string | undefined;
 }
 
 export function readRefreshToken(req: Request) {
   const key = sessionKeyFrom(req);
-  if (key) return req.cookies?.[`emp_refresh_${key}`] as string | undefined;
+  if (key && req.cookies?.[`emp_refresh_${key}`]) {
+    return req.cookies[`emp_refresh_${key}`] as string;
+  }
   return req.cookies?.emp_refresh as string | undefined;
 }
 
 export function writeSession(res: Response, key: string, accessToken: string, refreshToken?: string) {
-  res.cookie(`emp_access_${key}`, accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
+  if (key) {
+    res.cookie(`emp_access_${key}`, accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
+    if (refreshToken) {
+      res.cookie(`emp_refresh_${key}`, refreshToken, { ...cookieBase, maxAge: 14 * 24 * 60 * 60 * 1000 });
+    }
+  }
+  // Write base shared cookie as universal fallback for new tabs, page reloads, and direct deep-links
+  res.cookie("emp_access", accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
   if (refreshToken) {
-    res.cookie(`emp_refresh_${key}`, refreshToken, { ...cookieBase, maxAge: 14 * 24 * 60 * 60 * 1000 });
+    res.cookie("emp_refresh", refreshToken, { ...cookieBase, maxAge: 14 * 24 * 60 * 60 * 1000 });
   }
 }
 
-export function clearSession(res: Response, key: string) {
-  if (!key) {
-    res.clearCookie("emp_access", cookieBase);
-    res.clearCookie("emp_refresh", cookieBase);
-    return;
+export function clearSession(res: Response, key?: string) {
+  res.clearCookie("emp_access", cookieBase);
+  res.clearCookie("emp_refresh", cookieBase);
+  if (key) {
+    res.clearCookie(`emp_access_${key}`, cookieBase);
+    res.clearCookie(`emp_refresh_${key}`, cookieBase);
   }
-  res.clearCookie(`emp_access_${key}`, cookieBase);
-  res.clearCookie(`emp_refresh_${key}`, cookieBase);
 }
 
 export function clearSharedSession(res: Response) {

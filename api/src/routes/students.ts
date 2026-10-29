@@ -252,13 +252,13 @@ studentsRouter.get("/students", async (req, res, next) => {
     });
     const repeated = academicYearId && students.length
       ? await prisma.promotionDecision.findMany({
-          where: {
-            studentId: { in: students.map((student) => student.id) },
-            outcome: "REPEATED",
-            batch: { schoolId: school.id, toYearId: academicYearId },
-          },
-          select: { studentId: true, toLevel: true },
-        })
+        where: {
+          studentId: { in: students.map((student) => student.id) },
+          outcome: "REPEATED",
+          batch: { schoolId: school.id, toYearId: academicYearId },
+        },
+        select: { studentId: true, toLevel: true },
+      })
       : [];
     const repeatedIntoYear = new Set(repeated.map((row) => `${row.studentId}:${row.toLevel ?? ""}`));
     const rows = students.map((student) => {
@@ -1160,7 +1160,15 @@ studentsRouter.post("/students/:id/access", async (req, res, next) => {
     });
     if (!student) throw new HttpError(404, "Student was not found.");
     const existing = await prisma.user.findFirst({
-      where: { role: "STUDENT", personKey: student.permanentId },
+      where: {
+        role: "STUDENT",
+        personKey: {
+          in: [
+            student.permanentId,
+            ...(student.secondaryPermanentId ? [student.secondaryPermanentId] : []),
+          ],
+        },
+      },
     });
     if (existing) {
       const requested = z.string().email().safeParse(req.body?.email);
@@ -1172,7 +1180,18 @@ studentsRouter.post("/students/:id/access", async (req, res, next) => {
     const email = z.string().email().safeParse(req.body?.email);
     if (!email.success) throw new HttpError(400, "A student email is required for the portal.");
     const taken = await prisma.user.findUnique({ where: { email: email.data.toLowerCase() } });
-    if (taken) throw new HttpError(409, "This email is already used by another account.");
+    if (taken) {
+      if (taken.role === "STUDENT" && (!taken.personKey || taken.personKey === student.permanentId)) {
+        await prisma.user.update({
+          where: { id: taken.id },
+          data: { personKey: student.permanentId, schoolId: school.id },
+        });
+        const setPasswordPath = await issueSetPasswordLink(taken.id);
+        res.json({ kind: taken.passwordHash ? "reset" : "invite", setPasswordPath });
+        return;
+      }
+      throw new HttpError(409, "This email is already used by another account.");
+    }
     const user = await prisma.user.create({
       data: {
         email: email.data.toLowerCase(),

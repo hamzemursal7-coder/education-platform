@@ -306,23 +306,23 @@ transfersRouter.get("/transfer-requests", requireAuth, requireRole("SCHOOL_ADMIN
       const student = students.find((item) => item.id === row.studentId);
       const enrollment = enrollments.find((item) => item.id === row.fromEnrollmentId);
       const destination = destinationSections.find((item) => item.id === row.toSectionId);
-      const form1 = enrollment?.status === "ALUMNI" && enrollment.classGroup.level === "CLASS_8";
+      const form1 = enrollment?.status === "ALUMNI" && enrollment?.classGroup?.level === "CLASS_8";
       return {
         ...row,
         permanentId: student?.permanentId ?? "",
         secondaryPermanentId: student?.secondaryPermanentId ?? null,
-        name: student ? `${student.firstName} ${student.fatherName} ${student.grandfatherName}` : "",
+        name: student ? `${student.firstName} ${student.fatherName} ${student.grandfatherName}`.replace(/\s+/g, " ").trim() : "",
         gender: student?.gender === "MALE" ? "Male" : student?.gender === "FEMALE" ? "Female" : "",
         fromSchool: schools.find((item) => item.id === row.fromSchoolId)?.name ?? "",
         toSchool: schools.find((item) => item.id === row.toSchoolId)?.name ?? "",
         incoming: row.toSchoolId === school.id,
         kind: form1 ? "FORM_1" : enrollment?.status === "TRANSFERRED" ? "RETURN" : "SAME_LEVEL",
-        sourceYear: enrollment?.academicYear.name ?? "",
-        sourceLevel: enrollment ? levelLabel(enrollment.classGroup.level) : "",
-        sourceLevelCode: enrollment?.classGroup.level ?? "",
-        sourceSection: enrollment?.section.name ?? "",
-        destinationYear: destination?.classGroup.academicYear.name ?? "",
-        destinationLevel: destination ? levelLabel(destination.classGroup.level) : "",
+        sourceYear: enrollment?.academicYear?.name ?? "",
+        sourceLevel: enrollment?.classGroup ? levelLabel(enrollment.classGroup.level) : "",
+        sourceLevelCode: enrollment?.classGroup?.level ?? "",
+        sourceSection: enrollment?.section?.name ?? "",
+        destinationYear: destination?.classGroup?.academicYear?.name ?? "",
+        destinationLevel: destination?.classGroup ? levelLabel(destination.classGroup.level) : "",
         destinationSection: destination?.name ?? "",
         requestedAt: row.createdAt,
         statusUpdatedAt: row.updatedAt,
@@ -468,9 +468,9 @@ transfersRouter.post("/transfer-requests/:id/approve", requireAuth, requireRole(
           ...(isReturn
             ? {}
             : {
-                level: source.classGroup.level,
-                academicYear: { name: source.academicYear.name },
-              }),
+              level: source.classGroup.level,
+              academicYear: { name: source.academicYear.name },
+            }),
         },
       },
       include: { classGroup: { include: { academicYear: true } } },
@@ -529,10 +529,10 @@ transfersRouter.post("/transfer-requests/:id/approve", requireAuth, requireRole(
           status: "ACTIVE",
           ...(source.schoolId !== school.id
             ? {
-                previousSchoolId: source.schoolId,
-                previousClass: levelLabel(source.classGroup.level),
-                leavingYear: source.academicYear.name,
-              }
+              previousSchoolId: source.schoolId,
+              previousClass: levelLabel(source.classGroup.level),
+              leavingYear: source.academicYear.name,
+            }
             : {}),
         },
       });
@@ -1272,14 +1272,14 @@ transfersRouter.get(
           : {}),
         ...(search
           ? {
-              OR: [
-                { certificateNumber: { contains: search, mode: "insensitive" } },
-                { destinationSchoolName: { contains: search, mode: "insensitive" } },
-                { student: { firstName: { contains: search, mode: "insensitive" } } },
-                { student: { fatherName: { contains: search, mode: "insensitive" } } },
-                { student: { permanentId: { contains: search, mode: "insensitive" } } },
-              ],
-            }
+            OR: [
+              { certificateNumber: { contains: search, mode: "insensitive" } },
+              { destinationSchoolName: { contains: search, mode: "insensitive" } },
+              { student: { firstName: { contains: search, mode: "insensitive" } } },
+              { student: { fatherName: { contains: search, mode: "insensitive" } } },
+              { student: { permanentId: { contains: search, mode: "insensitive" } } },
+            ],
+          }
           : {}),
       };
 
@@ -1515,37 +1515,37 @@ transfersRouter.get(
               ? { status: "ALUMNI" }
               : isEligibleOnly
                 ? {
-                    status: { not: "ALUMNI" },
-                    alumniRecords: { none: { fromLevel: "CLASS_8" } },
-                    enrollments: {
-                      some: { status: { in: ["TRANSFERRED", "RETAINED", "PROMOTED"] } },
-                      none: { status: "ACTIVE" },
-                    },
-                  }
+                  status: { notIn: ["ALUMNI", "ACTIVE"] },
+                  alumniRecords: { none: {} },
+                  enrollments: {
+                    some: { status: { in: ["TRANSFERRED", "RETAINED", "PROMOTED"] } },
+                    none: { status: { in: ["ACTIVE", "ALUMNI"] } },
+                  },
+                }
                 : {}),
         ...(q
           ? {
-              OR: [
-                { permanentId: { contains: q, mode: "insensitive" } },
-                { secondaryPermanentId: { contains: q, mode: "insensitive" } },
-                { nationalId: { contains: q, mode: "insensitive" } },
-                { phone: { contains: q } },
-                { firstName: { contains: q, mode: "insensitive" } },
-                { fatherName: { contains: q, mode: "insensitive" } },
-                { grandfatherName: { contains: q, mode: "insensitive" } },
-                { transferCertificateNo: { contains: q, mode: "insensitive" } },
-                { externalTransfers: { some: { certificateNumber: { contains: q, mode: "insensitive" } } } },
-                { enrollments: { some: { academicYear: { name: { contains: q, mode: "insensitive" } } } } },
-                { leavingYear: { contains: q, mode: "insensitive" } },
-                { guardians: { some: { guardian: { email: { contains: q, mode: "insensitive" } } } } },
-                ...(emailMatchedPersonKeys.length > 0
-                  ? [
-                      { permanentId: { in: emailMatchedPersonKeys } },
-                      { secondaryPermanentId: { in: emailMatchedPersonKeys } },
-                    ]
-                  : []),
-              ],
-            }
+            OR: [
+              { permanentId: { contains: q, mode: "insensitive" } },
+              { secondaryPermanentId: { contains: q, mode: "insensitive" } },
+              { nationalId: { contains: q, mode: "insensitive" } },
+              { phone: { contains: q } },
+              { firstName: { contains: q, mode: "insensitive" } },
+              { fatherName: { contains: q, mode: "insensitive" } },
+              { grandfatherName: { contains: q, mode: "insensitive" } },
+              { transferCertificateNo: { contains: q, mode: "insensitive" } },
+              { externalTransfers: { some: { certificateNumber: { contains: q, mode: "insensitive" } } } },
+              { enrollments: { some: { academicYear: { name: { contains: q, mode: "insensitive" } } } } },
+              { leavingYear: { contains: q, mode: "insensitive" } },
+              { guardians: { some: { guardian: { email: { contains: q, mode: "insensitive" } } } } },
+              ...(emailMatchedPersonKeys.length > 0
+                ? [
+                  { permanentId: { in: emailMatchedPersonKeys } },
+                  { secondaryPermanentId: { in: emailMatchedPersonKeys } },
+                ]
+                : []),
+            ],
+          }
           : {}),
       };
 
@@ -1585,8 +1585,8 @@ transfersRouter.get(
           const previousEnrollments = student.enrollments.filter((e) => e.id !== activeEnrollment?.id);
           const isPrimaryAlumni =
             student.status === "ALUMNI" ||
-            student.alumniRecords.some((r) => r.fromLevel === "CLASS_8") ||
-            student.enrollments.some((e) => e.status === "ALUMNI" && e.classGroup.level === "CLASS_8");
+            student.alumniRecords.length > 0 ||
+            student.enrollments.some((e) => e.status === "ALUMNI" || e.classGroup?.level === "CLASS_8");
           const eligibleForReturn =
             !activeEnrollment && !isPrimaryAlumni && student.enrollments.length > 0 && student.status !== "ALUMNI";
 
@@ -1606,8 +1606,8 @@ transfersRouter.get(
             status: student.status,
             isPrimaryAlumni,
             eligibleForReturn,
-          currentEnrollment: activeEnrollment
-            ? {
+            currentEnrollment: activeEnrollment
+              ? {
                 id: activeEnrollment.id,
                 schoolId: activeEnrollment.school.id,
                 schoolName: activeEnrollment.school.name,
@@ -1624,27 +1624,27 @@ transfersRouter.get(
                 status: activeEnrollment.status,
                 admittedOn: activeEnrollment.admittedOn,
               }
-            : null,
-          previousEnrollments: previousEnrollments.map((enr) => ({
-            id: enr.id,
-            schoolId: enr.school.id,
-            schoolName: enr.school.name,
-            schoolCode: enr.school.code,
-            academicYearId: enr.academicYear.id,
-            academicYearName: enr.academicYear.name,
-            classGroupId: enr.classGroup.id,
-            level: enr.classGroup.level,
-            levelLabel: levelLabel(enr.classGroup.level),
-            sectionId: enr.section.id,
-            sectionName: enr.section.name,
-            rollNumber: enr.rollNumber,
-            studentNumber: enr.studentNumber,
-            status: enr.status,
-            admittedOn: enr.admittedOn,
-            externalTransfer: enr.externalTransfer,
-          })),
-        };
-      }).filter((stu) => (isEligibleOnly ? stu.eligibleForReturn : true));
+              : null,
+            previousEnrollments: previousEnrollments.map((enr) => ({
+              id: enr.id,
+              schoolId: enr.school.id,
+              schoolName: enr.school.name,
+              schoolCode: enr.school.code,
+              academicYearId: enr.academicYear.id,
+              academicYearName: enr.academicYear.name,
+              classGroupId: enr.classGroup.id,
+              level: enr.classGroup.level,
+              levelLabel: levelLabel(enr.classGroup.level),
+              sectionId: enr.section.id,
+              sectionName: enr.section.name,
+              rollNumber: enr.rollNumber,
+              studentNumber: enr.studentNumber,
+              status: enr.status,
+              admittedOn: enr.admittedOn,
+              externalTransfer: enr.externalTransfer,
+            })),
+          };
+        }).filter((stu) => (isEligibleOnly ? stu.eligibleForReturn : true));
 
       res.json({ items });
     } catch (error) {

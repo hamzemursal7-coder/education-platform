@@ -17,7 +17,7 @@ const loginSchema = z.object({
 });
 
 function setSessionCookies(res: import("express").Response, key: string, accessToken: string, refreshToken: string) {
-  clearSharedSession(res);
+
   writeSession(res, key, accessToken, refreshToken);
 }
 

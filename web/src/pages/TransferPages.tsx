@@ -404,6 +404,9 @@ export function TransfersPage() {
       loadDirectory(1, dirFilter, dirSearch);
     } else if (activeTab === "return_reenroll") {
       void loadReturnStudents(returnSearch, returnOnlyEligible);
+      if (placement.length === 0) {
+        void load();
+      }
     }
   }, [activeTab, dirFilter]);
 
@@ -426,10 +429,16 @@ export function TransfersPage() {
     if (returnDestSchoolId === "SELF" || !returnDestSchoolId) {
       setReturnDestPlacement(placement);
       if (placement.length > 0) {
-        const defYear = placement.find((y) => y.isCurrent) ?? placement[0];
-        setReturnYearId(defYear?.id ?? "");
-        setReturnClassId(defYear?.classes[0]?.id ?? "");
-        setReturnSectionId(defYear?.classes[0]?.sections[0]?.id ?? "");
+        const defYear = placement.find((y) => y.id === returnYearId) ?? placement.find((y) => y.isCurrent) ?? placement[0];
+        if (defYear) {
+          setReturnYearId(defYear.id);
+          const defCls = defYear.classes.find((c) => c.id === returnClassId) ?? defYear.classes[0];
+          if (defCls) {
+            setReturnClassId(defCls.id);
+            const defSec = defCls.sections.find((s) => s.id === returnSectionId) ?? defCls.sections[0];
+            setReturnSectionId(defSec?.id ?? "");
+          }
+        }
       }
       return;
     }
@@ -437,10 +446,16 @@ export function TransfersPage() {
       .then((res) => {
         setReturnDestPlacement(res.years);
         if (res.years.length > 0) {
-          const defYear = res.years.find((y) => y.isCurrent) ?? res.years[0];
-          setReturnYearId(defYear?.id ?? "");
-          setReturnClassId(defYear?.classes[0]?.id ?? "");
-          setReturnSectionId(defYear?.classes[0]?.sections[0]?.id ?? "");
+          const defYear = res.years.find((y) => y.id === returnYearId) ?? res.years.find((y) => y.isCurrent) ?? res.years[0];
+          if (defYear) {
+            setReturnYearId(defYear.id);
+            const defCls = defYear.classes.find((c) => c.id === returnClassId) ?? defYear.classes[0];
+            if (defCls) {
+              setReturnClassId(defCls.id);
+              const defSec = defCls.sections.find((s) => s.id === returnSectionId) ?? defCls.sections[0];
+              setReturnSectionId(defSec?.id ?? "");
+            }
+          }
         }
       })
       .catch((caught: unknown) => {
@@ -672,7 +687,7 @@ export function TransfersPage() {
               setExtSelectedStudent(null);
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Failed to confirm external transfer.");
@@ -825,14 +840,14 @@ export function TransfersPage() {
       year.name !== row.sourceYear
         ? []
         : year.classes.flatMap((item) =>
-            item.level !== row.sourceLevelCode
-              ? []
-              : item.sections.map((section) => ({
-                  id: section.id,
-                  yearId: year.id,
-                  label: `${year.name} · ${item.label} · Section ${section.name}`,
-                })),
-          ),
+          item.level !== row.sourceLevelCode
+            ? []
+            : item.sections.map((section) => ({
+              id: section.id,
+              yearId: year.id,
+              label: `${year.name} · ${item.label} · Section ${section.name}`,
+            })),
+        ),
     );
   }
 
@@ -1040,11 +1055,10 @@ export function TransfersPage() {
       <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab("section_move")}
-          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${
-            activeTab === "section_move"
+          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${activeTab === "section_move"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
               : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
-          }`}
+            }`}
         >
           <UsersRound className="h-4 w-4" />
           1. Section Move
@@ -1052,11 +1066,10 @@ export function TransfersPage() {
 
         <button
           onClick={() => setActiveTab("internal_transfer")}
-          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${
-            activeTab === "internal_transfer"
+          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${activeTab === "internal_transfer"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
               : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
-          }`}
+            }`}
         >
           <Building2 className="h-4 w-4" />
           2. Internal Transfer
@@ -1069,11 +1082,10 @@ export function TransfersPage() {
 
         <button
           onClick={() => setActiveTab("external_transfer")}
-          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${
-            activeTab === "external_transfer"
+          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${activeTab === "external_transfer"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
               : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
-          }`}
+            }`}
         >
           <Send className="h-4 w-4" />
           3. External Transfer
@@ -1081,11 +1093,10 @@ export function TransfersPage() {
 
         <button
           onClick={() => setActiveTab("directory")}
-          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${
-            activeTab === "directory"
+          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${activeTab === "directory"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
               : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
-          }`}
+            }`}
         >
           <History className="h-4 w-4" />
           4. Transfer History & Directory
@@ -1093,11 +1104,10 @@ export function TransfersPage() {
 
         <button
           onClick={() => setActiveTab("return_reenroll")}
-          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${
-            activeTab === "return_reenroll"
+          className={`flex items-center gap-2 rounded-2xl px-5 py-2.5 text-sm font-bold transition-all ${activeTab === "return_reenroll"
               ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
               : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
-          }`}
+            }`}
         >
           <UserCheck className="h-4 w-4" />
           5. Return & Re-enroll Student
@@ -1214,16 +1224,15 @@ export function TransfersPage() {
                       <div
                         key={student.id}
                         onClick={() => toggleStudent(student.enrollmentId)}
-                        className={`group flex cursor-pointer flex-wrap items-center gap-3 px-5 py-3.5 transition-colors ${
-                          selected
+                        className={`group flex cursor-pointer flex-wrap items-center gap-3 px-5 py-3.5 transition-colors ${selected
                             ? "bg-blue-50/60 hover:bg-blue-50"
                             : "hover:bg-slate-50/80"
-                        }`}
+                          }`}
                       >
                         <input
                           type="checkbox"
                           checked={selected}
-                          onChange={() => {}} // handled by row click
+                          onChange={() => { }} // handled by row click
                           className="h-4 w-4 rounded accent-blue-600"
                         />
 
@@ -1562,11 +1571,10 @@ export function TransfersPage() {
               <button
                 key={code}
                 onClick={() => setRequestFilter(code)}
-                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${
-                  requestFilter === code
+                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition ${requestFilter === code
                     ? "bg-slate-900 text-white"
                     : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-                }`}
+                  }`}
               >
                 {label}
               </button>
@@ -1778,11 +1786,10 @@ export function TransfersPage() {
                       <div
                         key={stu.enrollmentId}
                         onClick={() => void selectStudentForExternal(stu)}
-                        className={`p-3 rounded-2xl border cursor-pointer transition ${
-                          isSelected
+                        className={`p-3 rounded-2xl border cursor-pointer transition ${isSelected
                             ? "bg-blue-50 border-blue-400 shadow-sm ring-1 ring-blue-400"
                             : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-xs text-slate-900">{stu.name}</span>
@@ -1839,13 +1846,12 @@ export function TransfersPage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Certificate #</span>
                         <p className="font-mono font-black text-sm text-blue-600">{extDraft.certificateNumber}</p>
                         <span
-                          className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                            extDraft.status === "CONFIRMED"
+                          className={`inline-block mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${extDraft.status === "CONFIRMED"
                               ? "bg-emerald-100 text-emerald-800"
                               : extDraft.status === "CANCELLED"
-                              ? "bg-rose-100 text-rose-800"
-                              : "bg-amber-100 text-amber-800"
-                          }`}
+                                ? "bg-rose-100 text-rose-800"
+                                : "bg-amber-100 text-amber-800"
+                            }`}
                         >
                           {extDraft.status}
                         </span>
@@ -2066,11 +2072,10 @@ export function TransfersPage() {
                       setDirFilter(code);
                       void loadDirectory(1, code, dirSearch);
                     }}
-                    className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                      dirFilter === code
+                    className={`rounded-xl px-3 py-1.5 text-xs font-bold transition ${dirFilter === code
                         ? "bg-slate-900 text-white"
                         : "bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100"
-                    }`}
+                      }`}
                   >
                     {label}
                   </button>
@@ -2135,13 +2140,12 @@ export function TransfersPage() {
                         <td className="px-4 py-3">{item.destinationSchoolName || <span className="text-slate-400 italic">Not specified</span>}</td>
                         <td className="px-4 py-3">
                           <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                              item.status === "CONFIRMED"
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${item.status === "CONFIRMED"
                                 ? "bg-emerald-100 text-emerald-800"
                                 : item.status === "CANCELLED"
-                                ? "bg-rose-100 text-rose-800"
-                                : "bg-amber-100 text-amber-800"
-                            }`}
+                                  ? "bg-rose-100 text-rose-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}
                           >
                             {item.status}
                           </span>
@@ -2273,24 +2277,24 @@ export function TransfersPage() {
                         key={stu.id}
                         onClick={() => {
                           setSelectedReturnStudent(stu);
-                          if (!returnYearId && (returnDestPlacement.length > 0 || placement.length > 0)) {
-                            const activeList = returnDestPlacement.length > 0 ? returnDestPlacement : placement;
-                            const defYear = activeList.find((y) => y.isCurrent) ?? activeList[0];
+                          const activeList = returnDestPlacement.length > 0 ? returnDestPlacement : placement;
+                          if (activeList.length > 0) {
+                            const defYear = activeList.find((y) => y.id === returnYearId) ?? activeList.find((y) => y.isCurrent) ?? activeList[0];
                             if (defYear) {
                               setReturnYearId(defYear.id);
-                              const defCls = defYear.classes[0];
+                              const defCls = defYear.classes.find((c) => c.id === returnClassId) ?? defYear.classes[0];
                               if (defCls) {
                                 setReturnClassId(defCls.id);
-                                setReturnSectionId(defCls.sections[0]?.id ?? "");
+                                const defSec = defCls.sections.find((s) => s.id === returnSectionId) ?? defCls.sections[0];
+                                setReturnSectionId(defSec?.id ?? "");
                               }
                             }
                           }
                         }}
-                        className={`rounded-2xl border p-3.5 cursor-pointer transition ${
-                          isSelected
+                        className={`rounded-2xl border p-3.5 cursor-pointer transition ${isSelected
                             ? "border-blue-500 bg-blue-50/70 ring-1 ring-blue-500"
                             : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div>
@@ -2303,19 +2307,18 @@ export function TransfersPage() {
                             </div>
                           </div>
                           <span
-                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${
-                              stu.isPrimaryAlumni
+                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-black uppercase ${stu.isPrimaryAlumni || stu.status === "ALUMNI"
                                 ? "bg-slate-100 text-slate-700 ring-1 ring-slate-300"
                                 : stu.eligibleForReturn
-                                ? "bg-amber-100 text-amber-800"
-                                : "bg-emerald-100 text-emerald-800"
-                            }`}
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-emerald-100 text-emerald-800"
+                              }`}
                           >
-                            {stu.isPrimaryAlumni
+                            {stu.isPrimaryAlumni || stu.status === "ALUMNI"
                               ? "Alumni · Not Eligible for Return"
                               : stu.eligibleForReturn
-                              ? `${stu.status} · Eligible`
-                              : "Currently Active"}
+                                ? `${stu.status} · Eligible`
+                                : "Currently Active"}
                           </span>
                         </div>
 
@@ -2458,6 +2461,9 @@ export function TransfersPage() {
                             }}
                             className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
+                            {returnDestPlacement.length === 0 ? (
+                              <option value="">No academic years available</option>
+                            ) : null}
                             {returnDestPlacement.map((y) => (
                               <option key={y.id} value={y.id}>
                                 {y.name} {y.isCurrent ? "(Current)" : ""}
@@ -2478,6 +2484,9 @@ export function TransfersPage() {
                             }}
                             className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
+                            {(returnDestPlacement.find((y) => y.id === returnYearId)?.classes ?? []).length === 0 ? (
+                              <option value="">No classes available</option>
+                            ) : null}
                             {(returnDestPlacement.find((y) => y.id === returnYearId)?.classes ?? []).map((c) => (
                               <option key={c.id} value={c.id}>
                                 {c.label}
@@ -2493,6 +2502,13 @@ export function TransfersPage() {
                             onChange={(e) => setReturnSectionId(e.target.value)}
                             className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                           >
+                            {(
+                              returnDestPlacement
+                                .find((y) => y.id === returnYearId)
+                                ?.classes.find((c) => c.id === returnClassId)?.sections ?? []
+                            ).length === 0 ? (
+                              <option value="">No sections available</option>
+                            ) : null}
                             {(
                               returnDestPlacement
                                 .find((y) => y.id === returnYearId)
